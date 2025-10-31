@@ -46,7 +46,6 @@ def load_vegas_odds(week):
         if os.path.exists(odds_file):
             with open(odds_file, 'r') as f:
                 odds = json.load(f)
-            st.success(f"✅ Vegas odds loaded for Week {week}!")
             return odds
         else:
             return None
@@ -280,27 +279,40 @@ def main():
         df_prepared = prepare_data(df)
         team_stats = calculate_team_stats(df_prepared)
     
-    # Sidebar
+    # Sidebar - Clear Week Selection
     with st.sidebar:
-        st.header("🎯 Prediction Settings")
+        st.header("🎯 Navigation")
         
+        # Main mode selection
         prediction_mode = st.radio(
             "Select Mode",
             ["Weekly Predictions", "Single Game Analysis", "Team Statistics"]
         )
         
+        st.markdown("---")
+        
         if prediction_mode == "Weekly Predictions":
-            week = st.selectbox("Select Week", options=list(range(1, 19)))
+            st.header("📅 Week Selection")
             
-            # Show Vegas odds availability
+            # Clear week dropdown with all 18 weeks
+            week = st.selectbox(
+                "Select NFL Week",
+                options=list(range(1, 19)),
+                index=0  # Default to Week 1
+            )
+            
+            # Vegas odds availability
+            st.markdown("---")
+            st.header("💰 Vegas Odds")
             if week == 9:
-                st.success("✅ Vegas odds available for Week 9")
+                st.success("✅ Available for Week 9")
+                use_vegas_odds = st.checkbox("Use Vegas Odds", value=True)
             else:
-                st.info("ℹ️ Vegas odds only available for Week 9")
-            
-            use_vegas_odds = st.checkbox("Use Vegas Odds", value=(week == 9))
+                st.info("ℹ️ Only available for Week 9")
+                use_vegas_odds = st.checkbox("Use Vegas Odds", value=False)
             
         elif prediction_mode == "Single Game Analysis":
+            st.header("🔍 Matchup Selection")
             teams = sorted(team_stats.keys())
             col1, col2 = st.columns(2)
             with col1:
@@ -311,6 +323,7 @@ def main():
             use_vegas_odds = st.checkbox("Use Vegas Odds", value=False)
             
         else:  # Team Statistics
+            st.header("📊 Team Selection")
             selected_team = st.selectbox("Select Team", options=sorted(team_stats.keys()))
     
     # Main content
@@ -337,6 +350,18 @@ def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds):
     if schedule and str(week) in schedule['weeks']:
         week_games = schedule['weeks'][str(week)]
         st.write(f"**{len(week_games)} games scheduled for Week {week}**")
+        
+        # Show quick week navigation
+        st.markdown("### 🔄 Quick Week Navigation")
+        cols = st.columns(6)
+        for i, col in enumerate(cols):
+            for j in range(3):
+                week_num = i * 3 + j + 1
+                if week_num <= 18:
+                    if col.button(f"Week {week_num}", key=f"week_{week_num}"):
+                        st.session_state.selected_week = week_num
+                        st.rerun()
+        
     else:
         st.error("❌ No schedule found for this week")
         return
