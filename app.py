@@ -197,7 +197,7 @@ def prepare_data(df):
     df_recent = df_recent.dropna(subset=['score_home', 'score_away', 'team_favorite', 'spread_favorite', 'over_under_line'])
     
     df_recent['home_win'] = (df_recent['score_home'] > df_recent['score_away']).astype(int)
-    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).ast(int)
+    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).astype(int)  # FIXED: astype(int)
     df_recent['tie'] = (df_recent['score_home'] == df_recent['score_away']).astype(int)
     
     df_recent['actual_spread'] = df_recent['score_home'] - df_recent['score_away']
@@ -531,7 +531,6 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week):
     
     if is_future_week:
         st.info(f"🎯 FUTURE WEEK PROJECTIONS - Using 2025 NFL Schedule")
-        st.info(f"   These are projected matchups for Week {week}")
     else:
         st.info(f"🎯 Found {len(real_games)} actual games for Week {week}")
     
@@ -693,10 +692,8 @@ def main():
         vegas_odds = load_vegas_odds(week)
         if vegas_odds:
             st.success(f"✅ Vegas odds available for Week {week}")
-            use_vegas_odds = st.checkbox("Use Vegas Odds", value=True)
         else:
             st.info(f"ℹ️ No Vegas odds available for Week {week}")
-            use_vegas_odds = False
     
     # Load models
     models = None
