@@ -15,7 +15,7 @@ st.set_page_config(
 
 def main():
     st.title("🏈 NFL Predictor Pro")
-    st.markdown("Machine Learning Powered NFL Predictions")
+    st.markdown("Machine Learning Powered NFL Predictions vs Vegas Odds")
     
     # Sidebar for controls
     with st.sidebar:
@@ -33,22 +33,27 @@ def main():
         week = st.selectbox("Select Week", list(range(1, 19)), index=current_week-1)
         season = st.number_input("Season", min_value=1966, max_value=2025, value=2025)
         
+        # Odds selection
+        st.subheader("Odds Source")
+        use_vegas_odds = st.checkbox("Compare with Vegas Odds", value=True)
+        
         st.markdown("---")
         st.info("Using your trained ML models for predictions")
     
     # Main content area
     if prediction_mode == "Weekly Schedule":
-        display_weekly_predictions(season, week)
+        display_weekly_predictions(season, week, use_vegas_odds)
     else:
         display_custom_matchup()
 
-def display_weekly_predictions(season, week):
+def display_weekly_predictions(season, week, use_vegas_odds):
     st.header(f"📅 {season} Week {week} Predictions")
     
     # Load models and data
     models = load_models()
     schedule = load_schedule(season, week)
     historical_data = load_historical_data()
+    vegas_odds = load_vegas_odds(week) if use_vegas_odds else None
     
     if models is None:
         st.error("❌ nfl_models.joblib not found. Please make sure it's uploaded to GitHub.")
@@ -60,12 +65,16 @@ def display_weekly_predictions(season, week):
     
     # Generate predictions for each game
     with st.spinner("Generating predictions using your ML models..."):
-        predictions = generate_predictions(models, schedule, historical_data, season, week)
+        predictions = generate_predictions(models, schedule, historical_data, season, week, vegas_odds)
     
     # Display predictions
-    st.subheader(f"🎯 Model Predictions - {season} Week {week}")
+    st.subheader(f"🎯 Model Predictions vs Vegas Odds - {season} Week {week}")
+    
+    if use_vegas_odds and vegas_odds is None:
+        st.warning("Vegas odds not found for this week. Using model predictions only.")
+    
     for _, game in predictions.iterrows():
-        display_game_prediction(game)
+        display_game_prediction(game, use_vegas_odds)
 
 def display_custom_matchup():
     st.header("🔮 Custom Matchup Predictor")
@@ -91,12 +100,12 @@ def display_custom_matchup():
                 custom_prediction = generate_custom_prediction(
                     models, home_team, away_team, spread_input, total_input
                 )
-                display_game_prediction(custom_prediction)
+                display_game_prediction(custom_prediction, False)
         else:
             st.error("Please make sure nfl_models.joblib is uploaded to GitHub")
 
-def display_game_prediction(game):
-    """Display prediction for a single game"""
+def display_game_prediction(game, show_vegas_comparison):
+    """Display prediction for a single game with Vegas comparison"""
     st.markdown("---")
     
     # Game header
@@ -108,11 +117,54 @@ def display_game_prediction(game):
     with col_header3:
         st.markdown(f"### {game['home_team']}")
     
-    # Predictions
+    if show_vegas_comparison and game.get('vegas_available', False):
+        st.subheader("🎰 Vegas vs Model Comparison")
+        
+        # Moneyline comparison
+        col_ml1, col_ml2, col_ml3 = st.columns(3)
+        with col_ml1:
+            st.markdown("**💰 Moneyline**")
+            st.write(f"Vegas: {game['vegas_away_ml']:+} / {game['vegas_home_ml']:+}")
+            st.write(f"Model: {game['away_ml']:+} / {game['home_ml']:+}")
+            
+            # Value indicator
+            if game['ml_value_bet']:
+                st.success(f"🎯 VALUE BET: {game['ml_value_team']}")
+            else:
+                st.info("⚖️ No clear value")
+                
+        with col_ml2:
+            st.markdown("**📊 Spread**")
+            if game.get('vegas_spread'):
+                st.write(f"Vegas: {game['vegas_spread']}")
+                st.write(f"Model: {game['predicted_spread']:+.1f}")
+                
+                if game['spread_value_bet']:
+                    st.success(f"🎯 VALUE: {game['spread_value_team']}")
+                else:
+                    st.info("⚖️ No clear value")
+            else:
+                st.info("No spread data")
+                
+        with col_ml3:
+            st.markdown("**🔢 Total**")
+            if game.get('vegas_total'):
+                st.write(f"Vegas: {game['vegas_total']}")
+                st.write(f"Model: {game['predicted_total']:.1f}")
+                
+                if game['total_value_bet']:
+                    st.success(f"🎯 VALUE: {game['total_value_pick']}")
+                else:
+                    st.info("⚖️ No clear value")
+            else:
+                st.info("No total data")
+    
+    # Model predictions
+    st.subheader("🤖 Model Predictions")
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.subheader("💰 Moneyline")
+        st.markdown("**💰 Moneyline**")
         # Away team moneyline
         away_ml_color = "green" if game['away_ml_prob'] > 0.5 else "gray"
         st.metric(
@@ -135,7 +187,7 @@ def display_game_prediction(game):
             st.success(f"✅ Model Pick: {game['home_team']} ML")
     
     with col2:
-        st.subheader("📊 Spread")
+        st.markdown("**📊 Spread**")
         st.metric("Predicted Spread", f"{game['predicted_spread']:+.1f}")
         st.metric("Model Pick", f"**{game['spread_pick']}**")
         st.write(f"**Cover Probability:** {game['cover_prob']:.1%}")
@@ -149,7 +201,7 @@ def display_game_prediction(game):
             st.error("Low Confidence")
     
     with col3:
-        st.subheader("🔢 Total Points")
+        st.markdown("**🔢 Total Points**")
         st.metric("Predicted Total", f"{game['predicted_total']:.1f}")
         st.metric("Model Pick", f"**{game['total_pick']}**")
         st.write(f"**Confidence:** {game['total_confidence']:.1%}")
@@ -188,6 +240,22 @@ def load_historical_data():
         st.sidebar.error(f"Error loading historical data: {e}")
         return None
 
+def load_vegas_odds(week):
+    """Load Vegas odds for the specified week"""
+    try:
+        odds_filename = f"week_{week}_odds.json"
+        if os.path.exists(odds_filename):
+            with open(odds_filename, 'r') as f:
+                odds_data = json.load(f)
+            st.sidebar.success(f"✅ Vegas odds loaded for Week {week}!")
+            return odds_data
+        else:
+            st.sidebar.warning(f"📊 No Vegas odds found for Week {week}")
+            return None
+    except Exception as e:
+        st.sidebar.error(f"Error loading Vegas odds: {e}")
+        return None
+
 def load_schedule(season, week):
     """Load NFL schedule from JSON file"""
     try:
@@ -211,8 +279,8 @@ def load_schedule(season, week):
         st.error(f"Error loading schedule: {e}")
         return None
 
-def generate_predictions(models, schedule, historical_data, season, week):
-    """Generate predictions using your ML models"""
+def generate_predictions(models, schedule, historical_data, season, week, vegas_odds):
+    """Generate predictions using your ML models and compare with Vegas odds"""
     predictions = []
     
     for _, game in schedule.iterrows():
@@ -220,33 +288,81 @@ def generate_predictions(models, schedule, historical_data, season, week):
         away_team = game['away']
         date = game['date']
         
+        # Get Vegas odds for this game if available
+        game_odds = get_game_odds(vegas_odds, home_team, away_team) if vegas_odds else None
+        
         # TODO: Replace this with your actual model prediction logic
-        # This is a placeholder - you'll need to integrate your actual model calls
+        # This should call your model and get real predictions
         
         # Sample prediction (replace with your model output)
         prediction = {
             'away_team': away_team,
             'home_team': home_team,
             'date': date,
-            'away_ml': +180,  # Your model should generate this
-            'home_ml': -210,  # Your model should generate this
-            'away_ml_prob': 0.32,  # Your model should generate this
-            'home_ml_prob': 0.68,  # Your model should generate this
-            'predicted_spread': -3.5,  # Your model should generate this
-            'spread_pick': f"{home_team} -3.5",  # Your model should generate this
-            'cover_prob': 0.62,  # Your model should generate this
-            'predicted_total': 47.2,  # Your model should generate this
-            'total_pick': 'OVER',  # Your model should generate this
-            'total_confidence': 0.58  # Your model should generate this
+            
+            # Model predictions
+            'away_ml': +180,
+            'home_ml': -210,
+            'away_ml_prob': 0.32,
+            'home_ml_prob': 0.68,
+            'predicted_spread': -3.5,
+            'spread_pick': f"{home_team} -3.5",
+            'cover_prob': 0.62,
+            'predicted_total': 47.2,
+            'total_pick': 'OVER',
+            'total_confidence': 0.58,
+            
+            # Vegas comparison
+            'vegas_available': game_odds is not None,
+            'vegas_away_ml': game_odds['away_ml'] if game_odds else None,
+            'vegas_home_ml': game_odds['home_ml'] if game_odds else None,
+            'vegas_spread': game_odds['spread'] if game_odds else None,
+            'vegas_total': game_odds['total'] if game_odds else None,
+            
+            # Value bets (you'll need to implement your value calculation logic)
+            'ml_value_bet': True,  # Your model should calculate this
+            'ml_value_team': away_team,  # Your model should calculate this
+            'spread_value_bet': True,  # Your model should calculate this
+            'spread_value_team': f"{home_team} -3.5",  # Your model should calculate this
+            'total_value_bet': True,  # Your model should calculate this
+            'total_value_pick': "OVER"  # Your model should calculate this
         }
         predictions.append(prediction)
     
     return pd.DataFrame(predictions)
 
+def get_game_odds(vegas_odds, home_team, away_team):
+    """Extract odds for a specific game from the Vegas odds data"""
+    if not vegas_odds:
+        return None
+    
+    game_odds = {
+        'away_ml': None,
+        'home_ml': None,
+        'spread': None,
+        'total': None
+    }
+    
+    # Filter odds for this specific game
+    game_data = [odds for odds in vegas_odds if odds['home_team'] == home_team and odds['away_team'] == away_team]
+    
+    if not game_data:
+        return None
+    
+    # Extract moneyline odds
+    for odds in game_data:
+        if odds['market'] == 'h2h':
+            if odds['label'] == away_team:
+                game_odds['away_ml'] = odds['price']
+            elif odds['label'] == home_team:
+                game_odds['home_ml'] = odds['price']
+        # You'll need to add logic for spreads and totals once you have that data
+    
+    return game_odds
+
 def generate_custom_prediction(models, home_team, away_team, spread, total):
     """Generate prediction for custom matchup"""
     # TODO: Replace this with your actual model prediction logic
-    # This should call your model with the custom parameters
     
     return {
         'away_team': away_team,
@@ -261,7 +377,8 @@ def generate_custom_prediction(models, home_team, away_team, spread, total):
         'cover_prob': 0.58,
         'predicted_total': total + 1.2,
         'total_pick': 'OVER',
-        'total_confidence': 0.54
+        'total_confidence': 0.54,
+        'vegas_available': False
     }
 
 def get_nfl_teams():
