@@ -15,7 +15,7 @@ import os
 import json
 warnings.filterwarnings('ignore')
 
-# Streamlit configuration
+# Configure the page
 st.set_page_config(
     page_title="NFL Predictor Pro",
     page_icon="🏈",
@@ -26,7 +26,6 @@ def load_nfl_data():
     """Load the NFL betting data"""
     try:
         df = pd.read_csv("spreadspoke_scores.csv")
-        st.success("✅ Historical data loaded!")
         return df
     except Exception as e:
         st.error(f"❌ Error loading data: {e}")
@@ -37,7 +36,6 @@ def load_nfl_schedule():
     try:
         with open("nfl_2025_schedule.json", 'r') as f:
             schedule = json.load(f)
-        st.success("✅ Schedule loaded!")
         return schedule
     except Exception as e:
         st.error(f"❌ Error loading schedule: {e}")
@@ -54,21 +52,18 @@ def load_vegas_odds(week):
         else:
             return None
     except Exception as e:
-        st.warning(f"⚠️ Error loading odds for Week {week}: {e}")
         return None
 
 def validate_data(df):
     """Validate the loaded data has required columns"""
     required_columns = ['team_home', 'team_away', 'score_home', 'score_away', 
                        'team_favorite_id', 'spread_favorite', 'over_under_line',
-                       'schedule_season', 'schedule_date']
+                       'schedule_season', 'schedule_date', 'schedule_week']
     
     missing_columns = [col for col in required_columns if col not in df.columns]
     if missing_columns:
         st.error(f"❌ Missing required columns: {missing_columns}")
         return False
-    
-    st.success("✅ All required columns present")
     return True
 
 def create_team_mapping():
@@ -147,8 +142,6 @@ def add_advanced_metrics(df):
 
 def add_advanced_features(df, team_stats):
     """Add more sophisticated features for better predictions"""
-    st.info("🔄 Adding advanced features...")
-    
     def calculate_team_sos(team, df):
         """Calculate strength of schedule for a team"""
         team_games = pd.concat([
@@ -203,10 +196,8 @@ def prepare_data(df):
     
     df_recent = df_recent.dropna(subset=['score_home', 'score_away', 'team_favorite', 'spread_favorite', 'over_under_line'])
     
-    st.success(f"✅ Cleaned data: {len(df_recent):,} games remaining after cleaning")
-    
     df_recent['home_win'] = (df_recent['score_home'] > df_recent['score_away']).astype(int)
-    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).astype(int)
+    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).ast(int)
     df_recent['tie'] = (df_recent['score_home'] == df_recent['score_away']).astype(int)
     
     df_recent['actual_spread'] = df_recent['score_home'] - df_recent['score_away']
@@ -523,9 +514,9 @@ def calculate_simple_projection(home_team, away_team, team_stats, df):
         'total': round(home_score + away_score)
     }
 
-def generate_weekly_projections(models, df, team_stats, schedule, season, week, use_vegas_odds=False):
-    """Generate projections for all games in a specific week"""
-    st.header(f"📅 Week {week} Projections - {season} Season")
+def generate_weekly_projections(models, df, team_stats, schedule, season, week):
+    """Generate projections for all games in a specific week using JSON schedule"""
+    st.header(f"📅 WEEK {week} PROJECTIONS - {season} SEASON")
     
     # Get the schedule for the week from JSON
     week_schedule = get_week_schedule_from_json(schedule, week)
@@ -534,15 +525,13 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week, 
         st.error(f"❌ No games available for {season} Week {week}")
         return
     
-    # Load Vegas odds if requested
-    vegas_odds = load_vegas_odds(week) if use_vegas_odds else None
-    
     # Check if these are real games or future projections
     real_games = df[(df['schedule_season'] == season) & (df['schedule_week'] == week)]
     is_future_week = len(real_games) == 0
     
     if is_future_week:
-        st.info(f"🎯 Future Week Projections - Using 2025 NFL Schedule")
+        st.info(f"🎯 FUTURE WEEK PROJECTIONS - Using 2025 NFL Schedule")
+        st.info(f"   These are projected matchups for Week {week}")
     else:
         st.info(f"🎯 Found {len(real_games)} actual games for Week {week}")
     
@@ -559,8 +548,11 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week, 
             col1, col2 = st.columns(2)
             
             with col1:
-                st.write(f"**Date:** {game_date}")
-                
+                if is_future_week:
+                    st.write(f"**Scheduled for:** {game_date}")
+                else:
+                    st.write(f"**Game Date:** {game_date}")
+            
             # Get features for prediction
             X_new = create_game_features_for_prediction(home_team, away_team, team_stats, df)
             
@@ -597,42 +589,54 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week, 
             # Score projection
             home_score, away_score = project_game_score(home_team, away_team, team_stats, df)
             
-            # Display predictions
+            # Determine game analysis
+            margin = abs(home_score - away_score)
+            total_points = home_score + away_score
+            
+            # Game analysis description
+            if margin > 14:
+                confidence = "HIGH"
+                analysis = f"Expect a dominant performance from {favorite}. This could be a statement game."
+            elif margin > 7:
+                confidence = "MEDIUM"
+                analysis = f"{favorite} should control this game and cover the spread comfortably."
+            else:
+                confidence = "LOW"
+                analysis = "This should be a close, competitive game that could go either way."
+            
+            # Over/Under analysis
+            if total_points > 51:
+                over_under = "STRONG OVER"
+                ou_analysis = "Both offenses should thrive in what could be a shootout."
+            elif total_points > 47:
+                over_under = "LEAN OVER"
+                ou_analysis = "Slightly higher scoring than average expected."
+            elif total_points < 39:
+                over_under = "STRONG UNDER"
+                ou_analysis = "Defensive battle expected with limited scoring opportunities."
+            elif total_points < 43:
+                over_under = "LEAN UNDER"
+                ou_analysis = "Lower scoring affair than typical."
+            else:
+                over_under = "NEUTRAL"
+                ou_analysis = "Game should land around league average scoring."
+            
             col3, col4, col5 = st.columns(3)
             
             with col3:
-                st.metric("Projected Score", f"{home_score} - {away_score}")
-                st.metric("Total Points", f"{home_score + away_score}")
+                st.metric("Projected Score", f"{home_team} {home_score} - {away_team} {away_score}")
+                st.metric("Spread", f"{favorite} -{spread:.1f}")
                 
             with col4:
-                st.metric("Spread", f"{favorite} -{spread:.1f}")
-                st.metric("Win Probability", f"{home_team}: {win_probability:.1%}")
-                
-            with col5:
-                # Over/Under analysis
-                total_points = home_score + away_score
-                if total_points > 51:
-                    over_under = "STRONG OVER"
-                elif total_points > 47:
-                    over_under = "LEAN OVER"
-                elif total_points < 39:
-                    over_under = "STRONG UNDER"
-                elif total_points < 43:
-                    over_under = "LEAN UNDER"
-                else:
-                    over_under = "NEUTRAL"
-                    
+                st.metric("Total", f"{projected_total:.1f} points")
                 st.metric("Over/Under", over_under)
                 
-                # Confidence
-                margin = abs(home_score - away_score)
-                if margin > 14:
-                    confidence = "HIGH"
-                elif margin > 7:
-                    confidence = "MEDIUM"
-                else:
-                    confidence = "LOW"
+            with col5:
+                st.metric("Win Probability", f"{home_team} {win_probability:.1%}")
                 st.metric("Confidence", confidence)
+            
+            st.write(f"**Game Analysis:** {analysis}")
+            st.write(f"**Points Outlook:** {ou_analysis}")
             
             projections.append({
                 'home_team': home_team,
@@ -644,14 +648,15 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week, 
                 'total': projected_total,
                 'over_under': over_under,
                 'home_win_prob': win_probability,
-                'confidence': confidence
+                'confidence': confidence,
+                'analysis': analysis
             })
     
     return projections
 
 def main():
     st.title("🏈 NFL Predictor Pro")
-    st.markdown("### Advanced NFL Betting Analysis & Projections")
+    st.markdown("### Machine Learning Powered NFL Predictions")
     
     # Load data
     with st.spinner("Loading data..."):
@@ -673,50 +678,37 @@ def main():
         df_prepared = add_advanced_features(df_prepared, team_stats)
         df_prepared = add_advanced_metrics(df_prepared)
     
-    # Sidebar navigation
-    st.sidebar.header("🎯 Navigation")
-    analysis_mode = st.sidebar.selectbox(
-        "Select Analysis Mode",
-        ["Weekly Projections", "Team Comparison", "Single Game Analysis", "Betting Insights"]
-    )
+    # Sidebar
+    with st.sidebar:
+        st.header("🎯 Settings")
+        
+        # WEEK SELECTION - DEFAULT TO WEEK 9
+        week = st.selectbox(
+            "Select Week", 
+            options=list(range(1, 19)),
+            index=8  # This sets Week 9 as default (index 8 = week 9)
+        )
+        
+        # Vegas odds availability
+        vegas_odds = load_vegas_odds(week)
+        if vegas_odds:
+            st.success(f"✅ Vegas odds available for Week {week}")
+            use_vegas_odds = st.checkbox("Use Vegas Odds", value=True)
+        else:
+            st.info(f"ℹ️ No Vegas odds available for Week {week}")
+            use_vegas_odds = False
     
-    if analysis_mode == "Weekly Projections":
-        st.sidebar.header("📅 Week Selection")
-        week = st.sidebar.selectbox("Select Week", options=list(range(1, 19)))
-        use_vegas_odds = st.sidebar.checkbox("Use Vegas Odds", value=False)
-        
-        # Load models
-        models = None
-        try:
-            if os.path.exists("nfl_models.joblib"):
-                models = joblib.load("nfl_models.joblib")
-                st.sidebar.success("✅ ML Models Loaded")
-        except:
-            st.sidebar.info("ℹ️ Using simple projection models")
-        
-        generate_weekly_projections(models, df_prepared, team_stats, schedule, 2025, week, use_vegas_odds)
-        
-    elif analysis_mode == "Team Comparison":
-        st.header("🏈 Team Comparison")
-        teams = sorted(team_stats.keys())
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            home_team = st.selectbox("Home Team", teams)
-        with col2:
-            away_team = st.selectbox("Away Team", teams)
-        
-        if st.button("Compare Teams"):
-            # Display team comparison (you'll need to adapt your display_team_comparison function for Streamlit)
-            st.info("Team comparison feature would be implemented here")
-            
-    elif analysis_mode == "Single Game Analysis":
-        st.header("🔍 Single Game Analysis")
-        # Implement single game analysis
-        
-    elif analysis_mode == "Betting Insights":
-        st.header("💰 Betting Insights")
-        # Implement betting insights
+    # Load models
+    models = None
+    try:
+        if os.path.exists("nfl_models.joblib"):
+            models = joblib.load("nfl_models.joblib")
+            st.sidebar.success("✅ ML Models Loaded")
+    except:
+        st.sidebar.info("ℹ️ Using simple projection models")
+    
+    # Generate projections for the selected week
+    generate_weekly_projections(models, df_prepared, team_stats, schedule, 2025, week)
 
 if __name__ == "__main__":
     main()
