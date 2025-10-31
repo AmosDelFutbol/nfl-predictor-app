@@ -5,6 +5,8 @@ import joblib
 import json
 import os
 from datetime import datetime
+import warnings
+warnings.filterwarnings('ignore')
 
 # Configure the page
 st.set_page_config(
@@ -13,390 +15,387 @@ st.set_page_config(
     layout="wide"
 )
 
-def main():
-    st.title("🏈 NFL Predictor Pro")
-    st.markdown("Machine Learning Powered NFL Predictions vs Vegas Odds")
-    
-    # Sidebar for controls
-    with st.sidebar:
-        st.header("Settings")
-        
-        # Model selection
-        st.subheader("Prediction Mode")
-        prediction_mode = st.radio(
-            "Select Prediction Type",
-            ["Weekly Schedule", "Custom Matchup"]
-        )
-        
-        # Week selection
-        current_week = get_current_nfl_week()
-        week = st.selectbox("Select Week", list(range(1, 19)), index=current_week-1)
-        season = st.number_input("Season", min_value=1966, max_value=2025, value=2025)
-        
-        # Odds selection
-        st.subheader("Odds Source")
-        use_vegas_odds = st.checkbox("Compare with Vegas Odds", value=True)
-        
-        st.markdown("---")
-        st.info("Using your trained ML models for predictions")
-    
-    # Main content area
-    if prediction_mode == "Weekly Schedule":
-        display_weekly_predictions(season, week, use_vegas_odds)
-    else:
-        display_custom_matchup()
-
-def display_weekly_predictions(season, week, use_vegas_odds):
-    st.header(f"📅 {season} Week {week} Predictions")
-    
-    # Load models and data
-    models = load_models()
-    schedule = load_schedule(season, week)
-    historical_data = load_historical_data()
-    vegas_odds = load_vegas_odds(week) if use_vegas_odds else None
-    
-    if models is None:
-        st.error("❌ nfl_models.joblib not found. Please make sure it's uploaded to GitHub.")
-        return
-        
-    if schedule is None or schedule.empty:
-        st.warning(f"📋 No schedule found for {season} Week {week}")
-        return
-    
-    # Generate predictions for each game
-    with st.spinner("Generating predictions using your ML models..."):
-        predictions = generate_predictions(models, schedule, historical_data, season, week, vegas_odds)
-    
-    # Display predictions
-    st.subheader(f"🎯 Model Predictions vs Vegas Odds - {season} Week {week}")
-    
-    if use_vegas_odds and vegas_odds is None:
-        st.warning("Vegas odds not found for this week. Using model predictions only.")
-    
-    for _, game in predictions.iterrows():
-        display_game_prediction(game, use_vegas_odds)
-
-def display_custom_matchup():
-    st.header("🔮 Custom Matchup Predictor")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        home_team = st.selectbox("Home Team", get_nfl_teams())
-    with col2:
-        away_team = st.selectbox("Away Team", get_nfl_teams())
-    
-    col3, col4 = st.columns(2)
-    with col3:
-        spread_input = st.number_input("Vegas Spread", value=0.0, step=0.5, 
-                                      help="Positive for home underdog, negative for home favorite")
-    with col4:
-        total_input = st.number_input("Vegas Total", value=45.0, step=0.5)
-    
-    if st.button("Generate Prediction", type="primary"):
-        models = load_models()
-        if models is not None:
-            with st.spinner("Running model prediction..."):
-                custom_prediction = generate_custom_prediction(
-                    models, home_team, away_team, spread_input, total_input
-                )
-                display_game_prediction(custom_prediction, False)
-        else:
-            st.error("Please make sure nfl_models.joblib is uploaded to GitHub")
-
-def display_game_prediction(game, show_vegas_comparison):
-    """Display prediction for a single game with Vegas comparison"""
-    st.markdown("---")
-    
-    # Game header
-    col_header1, col_header2, col_header3 = st.columns([2, 1, 2])
-    with col_header1:
-        st.markdown(f"### 🏈 {game['away_team']}")
-    with col_header2:
-        st.markdown("### @")
-    with col_header3:
-        st.markdown(f"### {game['home_team']}")
-    
-    if show_vegas_comparison and game.get('vegas_available', False):
-        st.subheader("🎰 Vegas vs Model Comparison")
-        
-        # Moneyline comparison
-        col_ml1, col_ml2, col_ml3 = st.columns(3)
-        with col_ml1:
-            st.markdown("**💰 Moneyline**")
-            st.write(f"Vegas: {game['vegas_away_ml']:+} / {game['vegas_home_ml']:+}")
-            st.write(f"Model: {game['away_ml']:+} / {game['home_ml']:+}")
-            
-            # Value indicator
-            if game['ml_value_bet']:
-                st.success(f"🎯 VALUE BET: {game['ml_value_team']}")
-            else:
-                st.info("⚖️ No clear value")
-                
-        with col_ml2:
-            st.markdown("**📊 Spread**")
-            if game.get('vegas_spread'):
-                st.write(f"Vegas: {game['vegas_spread']}")
-                st.write(f"Model: {game['predicted_spread']:+.1f}")
-                
-                if game['spread_value_bet']:
-                    st.success(f"🎯 VALUE: {game['spread_value_team']}")
-                else:
-                    st.info("⚖️ No clear value")
-            else:
-                st.info("No spread data")
-                
-        with col_ml3:
-            st.markdown("**🔢 Total**")
-            if game.get('vegas_total'):
-                st.write(f"Vegas: {game['vegas_total']}")
-                st.write(f"Model: {game['predicted_total']:.1f}")
-                
-                if game['total_value_bet']:
-                    st.success(f"🎯 VALUE: {game['total_value_pick']}")
-                else:
-                    st.info("⚖️ No clear value")
-            else:
-                st.info("No total data")
-    
-    # Model predictions
-    st.subheader("🤖 Model Predictions")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("**💰 Moneyline**")
-        # Away team moneyline
-        away_ml_color = "green" if game['away_ml_prob'] > 0.5 else "gray"
-        st.metric(
-            f"{game['away_team']}", 
-            f"{game['away_ml']:+}",
-            f"Win Prob: {game['away_ml_prob']:.1%}"
-        )
-        # Home team moneyline  
-        home_ml_color = "green" if game['home_ml_prob'] > 0.5 else "gray"
-        st.metric(
-            f"{game['home_team']}", 
-            f"{game['home_ml']:+}",
-            f"Win Prob: {game['home_ml_prob']:.1%}"
-        )
-        
-        # Recommended bet
-        if game['away_ml_prob'] > game['home_ml_prob']:
-            st.success(f"✅ Model Pick: {game['away_team']} ML")
-        else:
-            st.success(f"✅ Model Pick: {game['home_team']} ML")
-    
-    with col2:
-        st.markdown("**📊 Spread**")
-        st.metric("Predicted Spread", f"{game['predicted_spread']:+.1f}")
-        st.metric("Model Pick", f"**{game['spread_pick']}**")
-        st.write(f"**Cover Probability:** {game['cover_prob']:.1%}")
-        
-        # Confidence indicator
-        if game['cover_prob'] > 0.6:
-            st.success("High Confidence")
-        elif game['cover_prob'] > 0.4:
-            st.warning("Medium Confidence")
-        else:
-            st.error("Low Confidence")
-    
-    with col3:
-        st.markdown("**🔢 Total Points**")
-        st.metric("Predicted Total", f"{game['predicted_total']:.1f}")
-        st.metric("Model Pick", f"**{game['total_pick']}**")
-        st.write(f"**Confidence:** {game['total_confidence']:.1%}")
-        
-        # Over/Under indicator
-        if game['total_pick'] == 'OVER':
-            st.success("Trending OVER")
-        else:
-            st.error("Trending UNDER")
-
-def load_models():
-    """Load the trained ML models"""
+# Import your existing functions (I'll include the key ones)
+def load_nfl_data():
+    """Load the NFL betting data"""
     try:
-        if os.path.exists("nfl_models.joblib"):
-            models = joblib.load("nfl_models.joblib")
-            st.sidebar.success("✅ Models loaded successfully!")
-            return models
-        else:
-            st.sidebar.error("❌ nfl_models.joblib not found")
-            return None
+        df = pd.read_csv("spreadspoke_scores.csv")
+        st.success("✅ Historical data loaded!")
+        return df
     except Exception as e:
-        st.sidebar.error(f"Error loading models: {e}")
+        st.error(f"❌ Error loading data: {e}")
         return None
 
-def load_historical_data():
-    """Load historical game data"""
+def load_nfl_schedule():
+    """Load the 2025 NFL schedule from JSON file"""
     try:
-        if os.path.exists("spreadspoke_scores.csv"):
-            df = pd.read_csv("spreadspoke_scores.csv")
-            st.sidebar.success("✅ Historical data loaded!")
-            return df
-        else:
-            st.sidebar.warning("📊 Historical data not found")
-            return None
+        with open("nfl_2025_schedule.json", 'r') as f:
+            schedule = json.load(f)
+        st.success("✅ Schedule loaded!")
+        return schedule
     except Exception as e:
-        st.sidebar.error(f"Error loading historical data: {e}")
+        st.error(f"❌ Error loading schedule: {e}")
         return None
 
 def load_vegas_odds(week):
-    """Load Vegas odds for the specified week"""
+    """Load Vegas odds for specific week"""
     try:
-        odds_filename = f"week_{week}_odds.json"
-        if os.path.exists(odds_filename):
-            with open(odds_filename, 'r') as f:
-                odds_data = json.load(f)
-            st.sidebar.success(f"✅ Vegas odds loaded for Week {week}!")
-            return odds_data
-        else:
-            st.sidebar.warning(f"📊 No Vegas odds found for Week {week}")
-            return None
+        odds_file = f"week_{week}_odds.json"
+        with open(odds_file, 'r') as f:
+            odds = json.load(f)
+        st.success(f"✅ Vegas odds loaded for Week {week}!")
+        return odds
     except Exception as e:
-        st.sidebar.error(f"Error loading Vegas odds: {e}")
+        st.warning(f"⚠️ No Vegas odds found for Week {week}")
         return None
 
-def load_schedule(season, week):
-    """Load NFL schedule from JSON file"""
-    try:
-        if os.path.exists("nfl_2025_schedule.json"):
-            with open("nfl_2025_schedule.json", 'r') as f:
-                schedule_data = json.load(f)
-            
-            # Extract games for the requested week
-            week_key = str(week)
-            if week_key in schedule_data['weeks']:
-                games = schedule_data['weeks'][week_key]
-                schedule_df = pd.DataFrame(games)
-                schedule_df['week'] = week
-                schedule_df['season'] = season
-                return schedule_df
-            else:
-                return pd.DataFrame()
-        else:
-            return None
-    except Exception as e:
-        st.error(f"Error loading schedule: {e}")
-        return None
-
-def generate_predictions(models, schedule, historical_data, season, week, vegas_odds):
-    """Generate predictions using your ML models and compare with Vegas odds"""
-    predictions = []
+def prepare_data(df):
+    """Prepare data (from your existing code)"""
+    # Your data preparation logic here
+    df_recent = df[df['schedule_season'].between(2020, 2025)].copy()
     
-    for _, game in schedule.iterrows():
-        home_team = game['home']
-        away_team = game['away']
-        date = game['date']
+    # Add your data cleaning and feature engineering
+    df_recent['home_win'] = (df_recent['score_home'] > df_recent['score_away']).astype(int)
+    df_recent['actual_spread'] = df_recent['score_home'] - df_recent['score_away']
+    df_recent['total_points'] = df_recent['score_home'] + df_recent['score_away']
+    
+    return df_recent
+
+def calculate_team_stats(df):
+    """Calculate team statistics (simplified version)"""
+    teams = pd.unique(np.concatenate([df['team_home'].unique(), df['team_away'].unique()]))
+    team_stats = {}
+    
+    for team in teams:
+        home_games = df[df['team_home'] == team]
+        away_games = df[df['team_away'] == team]
         
-        # Get Vegas odds for this game if available
-        game_odds = get_game_odds(vegas_odds, home_team, away_team) if vegas_odds else None
+        total_games = len(home_games) + len(away_games)
+        total_wins = home_games['home_win'].sum() + (len(away_games) - away_games['home_win'].sum())
         
-        # TODO: Replace this with your actual model prediction logic
-        # This should call your model and get real predictions
-        
-        # Sample prediction (replace with your model output)
-        prediction = {
-            'away_team': away_team,
-            'home_team': home_team,
-            'date': date,
-            
-            # Model predictions
-            'away_ml': +180,
-            'home_ml': -210,
-            'away_ml_prob': 0.32,
-            'home_ml_prob': 0.68,
-            'predicted_spread': -3.5,
-            'spread_pick': f"{home_team} -3.5",
-            'cover_prob': 0.62,
-            'predicted_total': 47.2,
-            'total_pick': 'OVER',
-            'total_confidence': 0.58,
-            
-            # Vegas comparison
-            'vegas_available': game_odds is not None,
-            'vegas_away_ml': game_odds['away_ml'] if game_odds else None,
-            'vegas_home_ml': game_odds['home_ml'] if game_odds else None,
-            'vegas_spread': game_odds['spread'] if game_odds else None,
-            'vegas_total': game_odds['total'] if game_odds else None,
-            
-            # Value bets (you'll need to implement your value calculation logic)
-            'ml_value_bet': True,  # Your model should calculate this
-            'ml_value_team': away_team,  # Your model should calculate this
-            'spread_value_bet': True,  # Your model should calculate this
-            'spread_value_team': f"{home_team} -3.5",  # Your model should calculate this
-            'total_value_bet': True,  # Your model should calculate this
-            'total_value_pick': "OVER"  # Your model should calculate this
+        team_stats[team] = {
+            'total_games': total_games,
+            'total_wins': total_wins,
+            'win_pct': total_wins / total_games if total_games > 0 else 0.5
         }
-        predictions.append(prediction)
     
-    return pd.DataFrame(predictions)
+    return team_stats
 
-def get_game_odds(vegas_odds, home_team, away_team):
-    """Extract odds for a specific game from the Vegas odds data"""
+def get_team_recent_stats(team, df, games_back=5):
+    """Get recent performance for a team"""
+    team_games = pd.concat([
+        df[df['team_home'] == team],
+        df[df['team_away'] == team]
+    ]).sort_values('schedule_date').tail(games_back)
+    
+    if len(team_games) == 0:
+        return {'win_pct': 0.5, 'ppg': 21, 'ppg_against': 21}
+    
+    wins = 0
+    points_for = 0
+    points_against = 0
+    
+    for _, game in team_games.iterrows():
+        if game['team_home'] == team:
+            wins += game['home_win']
+            points_for += game['score_home']
+            points_against += game['score_away']
+        else:
+            wins += (1 - game['home_win'])  # Away win
+            points_for += game['score_away']
+            points_against += game['score_home']
+    
+    return {
+        'win_pct': wins / len(team_games),
+        'ppg': points_for / len(team_games),
+        'ppg_against': points_against / len(team_games)
+    }
+
+def predict_winner(home_team, away_team, team_stats, df):
+    """Predict game winner based on team stats and recent performance"""
+    home_recent = get_team_recent_stats(home_team, df)
+    away_recent = get_team_recent_stats(away_team, df)
+    
+    home_win_pct = team_stats[home_team]['win_pct']
+    away_win_pct = team_stats[away_team]['win_pct']
+    
+    # Simple weighted prediction (60% recent form, 40% overall)
+    home_strength = (home_recent['win_pct'] * 0.6) + (home_win_pct * 0.4)
+    away_strength = (away_recent['win_pct'] * 0.6) + (away_win_pct * 0.4)
+    
+    # Home field advantage (~3 points)
+    home_advantage = 0.05
+    
+    home_prob = home_strength / (home_strength + away_strength) + home_advantage
+    away_prob = 1 - home_prob
+    
+    predicted_winner = home_team if home_prob > away_prob else away_team
+    confidence = max(home_prob, away_prob)
+    
+    return predicted_winner, home_prob, away_prob, confidence
+
+def predict_score(home_team, away_team, df):
+    """Predict final score based on recent performance"""
+    home_recent = get_team_recent_stats(home_team, df)
+    away_recent = get_team_recent_stats(away_team, df)
+    
+    # Project scores: (team offense + opponent defense) / 2 + home field advantage
+    home_score = (home_recent['ppg'] + away_recent['ppg_against']) / 2 + 2.5  # Home field advantage
+    away_score = (away_recent['ppg'] + home_recent['ppg_against']) / 2 - 1.0  # Away disadvantage
+    
+    return round(home_score), round(away_score)
+
+def get_vegas_game_odds(vegas_odds, home_team, away_team):
+    """Extract Vegas odds for a specific game"""
     if not vegas_odds:
         return None
     
     game_odds = {
-        'away_ml': None,
-        'home_ml': None,
+        'moneyline': {},
         'spread': None,
         'total': None
     }
     
-    # Filter odds for this specific game
-    game_data = [odds for odds in vegas_odds if odds['home_team'] == home_team and odds['away_team'] == away_team]
-    
-    if not game_data:
-        return None
-    
-    # Extract moneyline odds
-    for odds in game_data:
-        if odds['market'] == 'h2h':
-            if odds['label'] == away_team:
-                game_odds['away_ml'] = odds['price']
-            elif odds['label'] == home_team:
-                game_odds['home_ml'] = odds['price']
-        # You'll need to add logic for spreads and totals once you have that data
+    # Find moneyline odds
+    for odds in vegas_odds:
+        if odds['home_team'] == home_team and odds['away_team'] == away_team:
+            if odds['market'] == 'h2h':
+                if odds['label'] == home_team:
+                    game_odds['moneyline']['home'] = odds['price']
+                elif odds['label'] == away_team:
+                    game_odds['moneyline']['away'] = odds['price']
     
     return game_odds
 
-def generate_custom_prediction(models, home_team, away_team, spread, total):
-    """Generate prediction for custom matchup"""
-    # TODO: Replace this with your actual model prediction logic
+def analyze_spread_prediction(predicted_winner, predicted_home_score, predicted_away_score, vegas_spread):
+    """Analyze spread prediction vs Vegas"""
+    if not vegas_spread:
+        return "No spread data", 0.5
     
-    return {
-        'away_team': away_team,
-        'home_team': home_team,
-        'date': 'Custom Matchup',
-        'away_ml': +160,
-        'home_ml': -180,
-        'away_ml_prob': 0.36,
-        'home_ml_prob': 0.64,
-        'predicted_spread': -3.0,
-        'spread_pick': f'{home_team} -3.0',
-        'cover_prob': 0.58,
-        'predicted_total': total + 1.2,
-        'total_pick': 'OVER',
-        'total_confidence': 0.54,
-        'vegas_available': False
-    }
+    actual_spread = predicted_home_score - predicted_away_score
+    
+    # Determine who covers based on Vegas spread
+    # Negative spread means home favorite, positive means away favorite
+    if vegas_spread < 0:  # Home favorite
+        home_needs_to_win_by = abs(vegas_spread)
+        if predicted_winner == 'home' and actual_spread > home_needs_to_win_by:
+            return "Home covers", 0.7
+        else:
+            return "Away covers", 0.3
+    else:  # Away favorite
+        away_needs_to_win_by = vegas_spread
+        if predicted_winner == 'away' and abs(actual_spread) > away_needs_to_win_by:
+            return "Away covers", 0.7
+        else:
+            return "Home covers", 0.3
 
-def get_nfl_teams():
-    """Return list of NFL teams"""
-    return [
-        "Arizona Cardinals", "Atlanta Falcons", "Baltimore Ravens", "Buffalo Bills",
-        "Carolina Panthers", "Chicago Bears", "Cincinnati Bengals", "Cleveland Browns",
-        "Dallas Cowboys", "Denver Broncos", "Detroit Lions", "Green Bay Packers",
-        "Houston Texans", "Indianapolis Colts", "Jacksonville Jaguars", "Kansas City Chiefs",
-        "Las Vegas Raiders", "Los Angeles Chargers", "Los Angeles Rams", "Miami Dolphins",
-        "Minnesota Vikings", "New England Patriots", "New Orleans Saints", "New York Giants",
-        "New York Jets", "Philadelphia Eagles", "Pittsburgh Steelers", "San Francisco 49ers",
-        "Seattle Seahawks", "Tampa Bay Buccaneers", "Tennessee Titans", "Washington Commanders"
-    ]
+def analyze_total_prediction(predicted_total, vegas_total):
+    """Analyze over/under prediction vs Vegas"""
+    if not vegas_total:
+        return "No total data", 0.5
+    
+    if predicted_total > vegas_total:
+        return "OVER", (predicted_total - vegas_total) / 10  # Confidence based on difference
+    elif predicted_total < vegas_total:
+        return "UNDER", (vegas_total - predicted_total) / 10
+    else:
+        return "PUSH", 0.5
 
-def get_current_nfl_week():
-    """Calculate current NFL week (simplified)"""
-    return min(18, max(1, (datetime.now().month - 8) * 4 + 1))
+def main():
+    st.title("🏈 NFL Predictor Pro")
+    st.markdown("### Machine Learning Powered Betting Predictions")
+    
+    # Load data
+    with st.spinner("Loading data..."):
+        df = load_nfl_data()
+        schedule = load_nfl_schedule()
+        
+        if df is None:
+            st.error("❌ Could not load historical data. Please make sure spreadspoke_scores.csv is in your GitHub repository.")
+            return
+            
+        if schedule is None:
+            st.warning("⚠️ Could not load schedule. Some features may not work.")
+        
+        df_prepared = prepare_data(df)
+        team_stats = calculate_team_stats(df_prepared)
+    
+    # Sidebar
+    with st.sidebar:
+        st.header("🎯 Prediction Settings")
+        
+        prediction_mode = st.radio(
+            "Select Mode",
+            ["Weekly Predictions", "Single Game Analysis"]
+        )
+        
+        if prediction_mode == "Weekly Predictions":
+            week = st.selectbox("Select Week", options=list(range(1, 19)))
+            use_vegas_odds = st.checkbox("Use Vegas Odds", value=True)
+            
+        else:
+            col1, col2 = st.columns(2)
+            with col1:
+                home_team = st.selectbox("Home Team", options=sorted(team_stats.keys()))
+            with col2:
+                away_team = st.selectbox("Away Team", options=sorted(team_stats.keys()))
+            
+            use_vegas_odds = st.checkbox("Use Vegas Odds", value=True)
+    
+    # Main content
+    if prediction_mode == "Weekly Predictions":
+        display_weekly_predictions(week, df_prepared, team_stats, schedule, use_vegas_odds)
+    else:
+        display_single_game_analysis(home_team, away_team, df_prepared, team_stats, use_vegas_odds)
+
+def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds):
+    st.header(f"📅 Week {week} Predictions")
+    
+    # Load Vegas odds if requested
+    vegas_odds = load_vegas_odds(week) if use_vegas_odds else None
+    
+    # Get schedule for the week
+    if schedule and str(week) in schedule['weeks']:
+        week_games = schedule['weeks'][str(week)]
+    else:
+        st.error("❌ No schedule found for this week")
+        return
+    
+    # Generate predictions for each game
+    predictions = []
+    
+    for game in week_games:
+        home_team = game['home']
+        away_team = game['away']
+        
+        # Get Vegas odds for this game
+        game_vegas_odds = get_vegas_game_odds(vegas_odds, home_team, away_team) if vegas_odds else None
+        
+        # Make predictions
+        predicted_winner, home_prob, away_prob, win_confidence = predict_winner(home_team, away_team, team_stats, df)
+        predicted_home_score, predicted_away_score = predict_score(home_team, away_team, df)
+        predicted_total = predicted_home_score + predicted_away_score
+        
+        # Analyze against Vegas if available
+        if game_vegas_odds:
+            # For spread and total analysis, you would need to extract those from your odds data
+            spread_analysis, spread_confidence = "No spread data", 0.5
+            total_analysis, total_confidence = "No total data", 0.5
+        else:
+            spread_analysis, spread_confidence = "No Vegas data", 0.5
+            total_analysis, total_confidence = "No Vegas data", 0.5
+        
+        predictions.append({
+            'home_team': home_team,
+            'away_team': away_team,
+            'predicted_winner': predicted_winner,
+            'home_win_prob': home_prob,
+            'away_win_prob': away_prob,
+            'predicted_home_score': predicted_home_score,
+            'predicted_away_score': predicted_away_score,
+            'predicted_total': predicted_total,
+            'win_confidence': win_confidence,
+            'spread_analysis': spread_analysis,
+            'spread_confidence': spread_confidence,
+            'total_analysis': total_analysis,
+            'total_confidence': total_confidence
+        })
+    
+    # Display predictions
+    for prediction in predictions:
+        display_game_prediction(prediction)
+
+def display_single_game_analysis(home_team, away_team, df, team_stats, use_vegas_odds):
+    st.header(f"🔍 Game Analysis: {away_team} @ {home_team}")
+    
+    # Load recent Vegas odds (you might want to specify week for single games)
+    vegas_odds = None  # You can modify this to load specific odds
+    
+    # Make predictions
+    predicted_winner, home_prob, away_prob, win_confidence = predict_winner(home_team, away_team, team_stats, df)
+    predicted_home_score, predicted_away_score = predict_score(home_team, away_team, df)
+    predicted_total = predicted_home_score + predicted_away_score
+    
+    # Display team comparison
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader(f"🏠 {home_team}")
+        home_recent = get_team_recent_stats(home_team, df)
+        st.metric("Recent Win %", f"{home_recent['win_pct']:.1%}")
+        st.metric("Points Per Game", f"{home_recent['ppg']:.1f}")
+        st.metric("Points Allowed", f"{home_recent['ppg_against']:.1f}")
+    
+    with col2:
+        st.subheader(f"✈️ {away_team}")
+        away_recent = get_team_recent_stats(away_team, df)
+        st.metric("Recent Win %", f"{away_recent['win_pct']:.1%}")
+        st.metric("Points Per Game", f"{away_recent['ppg']:.1f}")
+        st.metric("Points Allowed", f"{away_recent['ppg_against']:.1f}")
+    
+    # Display predictions
+    st.subheader("🎯 Model Predictions")
+    
+    col3, col4, col5 = st.columns(3)
+    
+    with col3:
+        st.metric("Predicted Winner", predicted_winner)
+        st.write(f"Confidence: {win_confidence:.1%}")
+    
+    with col4:
+        st.metric("Projected Score", f"{predicted_home_score} - {predicted_away_score}")
+        st.write(f"Total: {predicted_total} points")
+    
+    with col5:
+        st.metric("Win Probability", f"{home_team}: {home_prob:.1%}")
+        st.write(f"{away_team}: {away_prob:.1%}")
+    
+    # Betting recommendations
+    if use_vegas_odds and vegas_odds:
+        st.subheader("💰 Betting Analysis")
+        # Add your Vegas odds analysis here
+        st.info("Vegas odds analysis would appear here with actual odds data")
+    else:
+        st.warning("⚠️ Vegas odds not available for this analysis")
+
+def display_game_prediction(prediction):
+    """Display a single game prediction in a nice format"""
+    st.markdown("---")
+    
+    col1, col2, col3 = st.columns([2, 1, 2])
+    
+    with col1:
+        st.write(f"**{prediction['away_team']}**")
+        st.write(f"Win Probability: {prediction['away_win_prob']:.1%}")
+    
+    with col2:
+        st.write("**@**")
+        st.write(f"**{prediction['predicted_home_score']} - {prediction['predicted_away_score']}**")
+    
+    with col3:
+        st.write(f"**{prediction['home_team']}**")
+        st.write(f"Win Probability: {prediction['home_win_prob']:.1%}")
+    
+    # Prediction details
+    col4, col5, col6 = st.columns(3)
+    
+    with col4:
+        st.metric("Predicted Winner", prediction['predicted_winner'])
+    
+    with col5:
+        st.metric("Total Points", prediction['predicted_total'])
+    
+    with col6:
+        confidence_color = "green" if prediction['win_confidence'] > 0.7 else "orange" if prediction['win_confidence'] > 0.6 else "red"
+        st.metric("Confidence", f"{prediction['win_confidence']:.1%}")
+    
+    # Betting analysis
+    if prediction['spread_analysis'] != "No Vegas data":
+        st.info(f"**Spread:** {prediction['spread_analysis']} (Confidence: {prediction['spread_confidence']:.1%})")
+    
+    if prediction['total_analysis'] != "No Vegas data":
+        total_color = "green" if "OVER" in prediction['total_analysis'] else "red"
+        st.info(f"**Total:** {prediction['total_analysis']} (Confidence: {prediction['total_confidence']:.1%})")
 
 if __name__ == "__main__":
     main()
