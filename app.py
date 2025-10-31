@@ -36,27 +36,17 @@ def load_nfl_schedule():
         st.error(f"❌ Error loading schedule: {e}")
         return None
 
-def load_vegas_odds():
-    """Load available Vegas odds - handles the fact you only have week_9_odds.json"""
-    available_odds_files = []
+def load_vegas_odds(week):
+    """Load Vegas odds for specific week - only works for week 9"""
+    if week != 9:
+        return None  # You only have week 9 odds
     
-    # Check for week_9_odds.json (the file you have)
-    if os.path.exists("week_9_odds.json"):
-        available_odds_files.append(9)
-    
-    # You can add more weeks here as you get more odds files
-    # if os.path.exists("week_1_odds.json"):
-    #     available_odds_files.append(1)
-    
-    return available_odds_files
-
-def load_specific_vegas_odds(week):
-    """Load specific week's Vegas odds"""
     try:
-        odds_file = f"week_{week}_odds.json"
+        odds_file = "week_9_odds.json"
         if os.path.exists(odds_file):
             with open(odds_file, 'r') as f:
                 odds = json.load(f)
+            st.success(f"✅ Vegas odds loaded for Week {week}!")
             return odds
         else:
             return None
@@ -194,15 +184,15 @@ def predict_score(home_team, away_team, df):
     return home_score, away_score
 
 def extract_vegas_data(vegas_odds, home_team, away_team):
-    """Extract spread and total from Vegas odds data"""
+    """Extract moneyline from Vegas odds data"""
     if not vegas_odds:
-        return None, None, None
+        return None, None
     
     # Find all odds for this game
     game_odds = [odds for odds in vegas_odds if odds['home_team'] == home_team and odds['away_team'] == away_team]
     
     if not game_odds:
-        return None, None, None
+        return None, None
     
     # Extract moneyline
     home_ml = None
@@ -215,19 +205,13 @@ def extract_vegas_data(vegas_odds, home_team, away_team):
             elif odds['label'] == away_team:
                 away_ml = odds['price']
     
-    # For spread and totals, you would need to add that data to your odds files
-    # For now, we'll use placeholders
-    spread = None
-    total = None
-    
-    return home_ml, away_ml, spread, total
+    return home_ml, away_ml
 
-def analyze_bet_recommendations(predicted_winner, home_prob, away_prob, predicted_home_score, predicted_away_score, home_ml, away_ml, vegas_spread, vegas_total):
+def analyze_bet_recommendations(predicted_winner, home_prob, away_prob, predicted_home_score, predicted_away_score, home_ml, away_ml):
     """Generate betting recommendations based on predictions vs Vegas"""
     recommendations = {
         'moneyline': {'bet': None, 'confidence': 0, 'edge': 0},
-        'spread': {'bet': None, 'confidence': 0, 'edge': 0},
-        'total': {'bet': None, 'confidence': 0, 'edge': 0}
+        'total': {'bet': None, 'confidence': 0}
     }
     
     # Moneyline analysis
@@ -260,26 +244,20 @@ def analyze_bet_recommendations(predicted_winner, home_prob, away_prob, predicte
                 'edge': away_edge
             }
     
-    # Spread analysis (placeholder - need spread data in your odds files)
-    if vegas_spread:
-        actual_spread = predicted_home_score - predicted_away_score
-        # Add spread analysis logic here when you have the data
-    
-    # Total analysis
+    # Total analysis - simple over/under based on projected total
     predicted_total = predicted_home_score + predicted_away_score
-    if vegas_total:
-        if predicted_total > vegas_total + 1:
-            recommendations['total'] = {
-                'bet': 'OVER',
-                'confidence': min((predicted_total - vegas_total) / 10, 0.8),
-                'edge': predicted_total - vegas_total
-            }
-        elif predicted_total < vegas_total - 1:
-            recommendations['total'] = {
-                'bet': 'UNDER',
-                'confidence': min((vegas_total - predicted_total) / 10, 0.8),
-                'edge': vegas_total - predicted_total
-            }
+    league_avg_total = 45.0  # Approximate NFL average
+    
+    if predicted_total > league_avg_total + 3:
+        recommendations['total'] = {
+            'bet': 'OVER',
+            'confidence': min((predicted_total - league_avg_total) / 10, 0.8)
+        }
+    elif predicted_total < league_avg_total - 3:
+        recommendations['total'] = {
+            'bet': 'UNDER',
+            'confidence': min((league_avg_total - predicted_total) / 10, 0.8)
+        }
     
     return recommendations
 
@@ -291,7 +269,6 @@ def main():
     with st.spinner("Loading data..."):
         df = load_nfl_data()
         schedule = load_nfl_schedule()
-        available_odds_weeks = load_vegas_odds()
         
         if df is None:
             st.error("❌ Could not load historical data.")
@@ -315,11 +292,13 @@ def main():
         if prediction_mode == "Weekly Predictions":
             week = st.selectbox("Select Week", options=list(range(1, 19)))
             
-            # Show available odds weeks
-            if available_odds_weeks:
-                st.info(f"📊 Vegas odds available for: Week {available_odds_weeks[0]}")
+            # Show Vegas odds availability
+            if week == 9:
+                st.success("✅ Vegas odds available for Week 9")
+            else:
+                st.info("ℹ️ Vegas odds only available for Week 9")
             
-            use_vegas_odds = st.checkbox("Use Vegas Odds", value=True)
+            use_vegas_odds = st.checkbox("Use Vegas Odds", value=(week == 9))
             
         elif prediction_mode == "Single Game Analysis":
             teams = sorted(team_stats.keys())
@@ -336,25 +315,23 @@ def main():
     
     # Main content
     if prediction_mode == "Weekly Predictions":
-        display_weekly_predictions(week, df_prepared, team_stats, schedule, use_vegas_odds, available_odds_weeks)
+        display_weekly_predictions(week, df_prepared, team_stats, schedule, use_vegas_odds)
     elif prediction_mode == "Single Game Analysis":
         display_single_game_analysis(home_team, away_team, df_prepared, team_stats, use_vegas_odds)
     else:
         display_team_statistics(selected_team, team_stats)
 
-def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds, available_odds_weeks):
+def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds):
     st.header(f"📅 Week {week} Predictions")
     
-    # Load Vegas odds if requested and available
+    # Load Vegas odds if requested
     vegas_odds = None
-    if use_vegas_odds and week in available_odds_weeks:
-        vegas_odds = load_specific_vegas_odds(week)
+    if use_vegas_odds:
+        vegas_odds = load_vegas_odds(week)
         if vegas_odds:
             st.success(f"✅ Using Vegas odds for Week {week}")
         else:
-            st.warning(f"⚠️ Could not load Vegas odds for Week {week}")
-    elif use_vegas_odds:
-        st.warning(f"⚠️ No Vegas odds available for Week {week}")
+            st.warning(f"⚠️ No Vegas odds available for Week {week}")
     
     # Get schedule for the week
     if schedule and str(week) in schedule['weeks']:
@@ -373,7 +350,7 @@ def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds, a
         game_date = game['date']
         
         # Get Vegas odds for this game
-        home_ml, away_ml, vegas_spread, vegas_total = extract_vegas_data(vegas_odds, home_team, away_team) if vegas_odds else (None, None, None, None)
+        home_ml, away_ml = extract_vegas_data(vegas_odds, home_team, away_team) if vegas_odds else (None, None)
         
         # Make predictions
         predicted_winner, home_prob, away_prob, win_confidence = predict_winner(home_team, away_team, team_stats, df)
@@ -383,7 +360,7 @@ def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds, a
         # Generate betting recommendations
         bet_recommendations = analyze_bet_recommendations(
             predicted_winner, home_prob, away_prob, predicted_home_score, predicted_away_score,
-            home_ml, away_ml, vegas_spread, vegas_total
+            home_ml, away_ml
         )
         
         predictions.append({
@@ -404,7 +381,7 @@ def display_weekly_predictions(week, df, team_stats, schedule, use_vegas_odds, a
     
     # Display predictions
     for prediction in predictions:
-        display_game_prediction(prediction)
+        display_game_prediction(prediction, week)
 
 def display_single_game_analysis(home_team, away_team, df, team_stats, use_vegas_odds):
     st.header(f"🔍 Game Analysis: {away_team} @ {home_team}")
@@ -490,7 +467,7 @@ def display_team_statistics(team, team_stats):
         st.metric("Point Differential", f"{point_diff:+}")
         st.metric("Average Margin", f"{(stats['ppg'] - stats['ppg_against']):+.1f}")
 
-def display_game_prediction(prediction):
+def display_game_prediction(prediction, week):
     """Display a single game prediction in a nice format"""
     st.markdown("---")
     
@@ -528,13 +505,15 @@ def display_game_prediction(prediction):
             st.success(f"**Moneyline**: {ml_bet['bet']}")
             st.write(f"Edge: {ml_bet['edge']:.1%}")
         else:
-            st.info("No clear moneyline value")
+            if week == 9:
+                st.info("No clear moneyline value")
+            else:
+                st.info("Vegas odds not available")
     
     with col6:
         # Total recommendation
         total_bet = prediction['bet_recommendations']['total']
         if total_bet['bet']:
-            color = "green" if total_bet['bet'] == 'OVER' else "red"
             st.metric("Total Pick", total_bet['bet'])
             st.write(f"Confidence: {total_bet['confidence']:.1%}")
         else:
