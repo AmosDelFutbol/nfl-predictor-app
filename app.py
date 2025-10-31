@@ -15,12 +15,60 @@ import os
 import json
 warnings.filterwarnings('ignore')
 
-# Configure the page
+# Configure the page for better layout
 st.set_page_config(
     page_title="NFL Predictor Pro",
     page_icon="🏈",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
+
+# Custom CSS to fix layout issues
+st.markdown("""
+<style>
+    /* Main container styling */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+    }
+    
+    /* Fix expander width */
+    .streamlit-expanderHeader {
+        font-size: 1.1rem;
+        font-weight: 600;
+    }
+    
+    /* Ensure content fits within screen */
+    .css-1d391kg {
+        max-width: 100%;
+    }
+    
+    /* Better column spacing */
+    .css-1r6slb0 {
+        gap: 1rem;
+    }
+    
+    /* Team name wrapping */
+    .team-name {
+        font-weight: bold;
+        word-wrap: break-word;
+        max-width: 200px;
+    }
+    
+    /* Metric card styling */
+    [data-testid="metric-container"] {
+        background-color: #f0f2f6;
+        padding: 10px;
+        border-radius: 10px;
+        border: 1px solid #e6e6e6;
+    }
+    
+    /* Reduce padding in columns */
+    .css-1r6slb0 > div {
+        padding: 0.5rem;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 def load_nfl_data():
     """Load the NFL betting data"""
@@ -197,7 +245,7 @@ def prepare_data(df):
     df_recent = df_recent.dropna(subset=['score_home', 'score_away', 'team_favorite', 'spread_favorite', 'over_under_line'])
     
     df_recent['home_win'] = (df_recent['score_home'] > df_recent['score_away']).astype(int)
-    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).astype(int)  # FIXED: astype(int)
+    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).astype(int)
     df_recent['tie'] = (df_recent['score_home'] == df_recent['score_away']).astype(int)
     
     df_recent['actual_spread'] = df_recent['score_home'] - df_recent['score_away']
@@ -530,11 +578,12 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week):
     is_future_week = len(real_games) == 0
     
     if is_future_week:
-        st.info(f"🎯 FUTURE WEEK PROJECTIONS - Using 2025 NFL Schedule")
+        st.info("🎯 **FUTURE WEEK PROJECTIONS** - Using 2025 NFL Schedule")
     else:
-        st.info(f"🎯 Found {len(real_games)} actual games for Week {week}")
+        st.info(f"🎯 **LIVE WEEK ANALYSIS** - Found {len(real_games)} actual games for Week {week}")
     
-    st.write(f"**Schedule: {len(week_schedule)} games this week**")
+    st.write(f"**📋 Schedule: {len(week_schedule)} games this week**")
+    st.markdown("---")
     
     projections = []
     
@@ -543,14 +592,16 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week):
         away_team = game['team_away']
         game_date = game['schedule_date']
         
-        with st.expander(f"🏈 {away_team} @ {home_team}"):
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if is_future_week:
-                    st.write(f"**Scheduled for:** {game_date}")
-                else:
-                    st.write(f"**Game Date:** {game_date}")
+        # Create a more compact expander
+        with st.expander(f"🏈 {away_team} @ {home_team} - {game_date}", expanded=False):
+            # Header with basic info
+            col_header1, col_header2, col_header3 = st.columns([2, 1, 2])
+            with col_header1:
+                st.markdown(f"<div class='team-name'>{away_team}</div>", unsafe_allow_html=True)
+            with col_header2:
+                st.markdown("**@**")
+            with col_header3:
+                st.markdown(f"<div class='team-name'>{home_team}</div>", unsafe_allow_html=True)
             
             # Get features for prediction
             X_new = create_game_features_for_prediction(home_team, away_team, team_stats, df)
@@ -620,22 +671,40 @@ def generate_weekly_projections(models, df, team_stats, schedule, season, week):
                 over_under = "NEUTRAL"
                 ou_analysis = "Game should land around league average scoring."
             
-            col3, col4, col5 = st.columns(3)
+            # Main prediction metrics in compact columns
+            col1, col2, col3, col4 = st.columns(4)
             
-            with col3:
-                st.metric("Projected Score", f"{home_team} {home_score} - {away_team} {away_score}")
+            with col1:
+                st.metric("Score", f"{home_score}-{away_score}")
+                st.metric("Total", f"{total_points}")
+                
+            with col2:
                 st.metric("Spread", f"{favorite} -{spread:.1f}")
+                st.metric("O/U Pick", over_under)
+                
+            with col3:
+                st.metric("Home Win %", f"{win_probability:.1%}")
+                confidence_color = "🟢" if confidence == "HIGH" else "🟡" if confidence == "MEDIUM" else "🔴"
+                st.metric("Confidence", f"{confidence_color} {confidence}")
                 
             with col4:
-                st.metric("Total", f"{projected_total:.1f} points")
-                st.metric("Over/Under", over_under)
-                
-            with col5:
-                st.metric("Win Probability", f"{home_team} {win_probability:.1%}")
-                st.metric("Confidence", confidence)
+                if home_score > away_score:
+                    st.metric("Predicted Winner", home_team)
+                else:
+                    st.metric("Predicted Winner", away_team)
+                st.metric("Projected Total", f"{projected_total:.1f}")
             
-            st.write(f"**Game Analysis:** {analysis}")
-            st.write(f"**Points Outlook:** {ou_analysis}")
+            # Analysis sections
+            st.markdown("---")
+            col_analysis1, col_analysis2 = st.columns(2)
+            
+            with col_analysis1:
+                st.write("**🎯 Game Analysis**")
+                st.info(analysis)
+                
+            with col_analysis2:
+                st.write("**📈 Points Outlook**")
+                st.info(ou_analysis)
             
             projections.append({
                 'home_team': home_team,
@@ -694,6 +763,10 @@ def main():
             st.success(f"✅ Vegas odds available for Week {week}")
         else:
             st.info(f"ℹ️ No Vegas odds available for Week {week}")
+        
+        st.markdown("---")
+        st.write("**About:**")
+        st.write("This app uses machine learning to generate NFL game projections based on historical data from 2020-2025.")
     
     # Load models
     models = None
@@ -701,7 +774,9 @@ def main():
         if os.path.exists("nfl_models.joblib"):
             models = joblib.load("nfl_models.joblib")
             st.sidebar.success("✅ ML Models Loaded")
-    except:
+        else:
+            st.sidebar.info("ℹ️ Using simple projection models")
+    except Exception as e:
         st.sidebar.info("ℹ️ Using simple projection models")
     
     # Generate projections for the selected week
