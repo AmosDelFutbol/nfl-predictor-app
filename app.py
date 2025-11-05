@@ -30,13 +30,31 @@ class NFLPredictor:
             st.error("Model file 'nfl_model.pkl' not found. Please run training first.")
             return False
     
+    def get_team_abbreviation(self, full_name):
+        """Convert full team name to abbreviation"""
+        team_mapping = {
+            'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
+            'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
+            'Cincinnati Bengals': 'CIN', 'Cleveland Browns': 'CLE', 'Dallas Cowboys': 'DAL',
+            'Denver Broncos': 'DEN', 'Detroit Lions': 'DET', 'Green Bay Packers': 'GB',
+            'Houston Texans': 'HOU', 'Indianapolis Colts': 'IND', 'Jacksonville Jaguars': 'JAX',
+            'Kansas City Chiefs': 'KC', 'Las Vegas Raiders': 'LV', 'Los Angeles Chargers': 'LAC',
+            'Los Angeles Rams': 'LAR', 'Miami Dolphins': 'MIA', 'Minnesota Vikings': 'MIN',
+            'New England Patriots': 'NE', 'New Orleans Saints': 'NO', 'New York Giants': 'NYG',
+            'New York Jets': 'NYJ', 'Philadelphia Eagles': 'PHI', 'Pittsburgh Steelers': 'PIT',
+            'San Francisco 49ers': 'SF', 'Seattle Seahawks': 'SEA', 'Tampa Bay Buccaneers': 'TB',
+            'Tennessee Titans': 'TEN', 'Washington Commanders': 'WAS'
+        }
+        return team_mapping.get(full_name, full_name)
+    
     def load_data(self):
         """Load schedule and odds data"""
         try:
             # Load schedule
             with open('week_10_schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-                self.schedule = pd.DataFrame(schedule_data)
+                # Extract the Week 10 games
+                self.schedule = pd.DataFrame(schedule_data['Week 10'])
                 st.info(f"Loaded schedule with {len(self.schedule)} games")
             
             # Load odds
@@ -45,84 +63,32 @@ class NFLPredictor:
                 self.odds = pd.DataFrame(odds_data)
                 st.info(f"Loaded odds for {len(self.odds)} games")
             
-            # Try to load team stats from 2025 data
-            try:
-                with open('2025_NFL_OFFENSE.json', 'r') as f:
-                    offense_data = json.load(f)
-                    offense_df = pd.DataFrame(offense_data)
+            # Load team stats from 2025 data
+            with open('2025_NFL_OFFENSE.json', 'r') as f:
+                offense_data = json.load(f)
+                offense_df = pd.DataFrame(offense_data)
+                
+                st.info(f"Loaded team stats with {len(offense_df)} teams")
+                
+                # Map full team names to abbreviations for stats
+                for _, team in offense_df.iterrows():
+                    team_name = team['Team']  # Full team name from your data
+                    team_abbr = self.get_team_abbreviation(team_name)
                     
-                    st.info(f"Loaded team stats with columns: {list(offense_df.columns)}")
+                    # Use available stats - adjust based on what's in your data
+                    points_per_game = team.get('POINTS PER GAME', 23.0)
+                    # For win percentage and defense, we'll use defaults for now
+                    win_pct = 0.5  # You'll need to calculate this from historical data
+                    points_against = 23.0  # You'll need to add defensive stats
                     
-                    # Try different possible column names for team abbreviation
-                    team_col = None
-                    for possible_col in ['team_abbr', 'team', 'abbreviation', 'team_code', 'Team']:
-                        if possible_col in offense_df.columns:
-                            team_col = possible_col
-                            break
-                    
-                    if team_col:
-                        for _, team in offense_df.iterrows():
-                            team_abbr = team[team_col]
-                            # Use available stats or defaults
-                            win_pct = team.get('win_pct', team.get('WinPct', 0.5))
-                            points_for = team.get('points_per_game', team.get('PointsFor', 23.0))
-                            points_against = team.get('points_allowed_per_game', team.get('PointsAgainst', 23.0))
-                            
-                            self.team_stats[team_abbr] = [win_pct, points_for, points_against]
-                        
-                        st.success(f"Loaded stats for {len(self.team_stats)} teams")
-                    else:
-                        st.warning("Could not find team abbreviation column in 2025 data")
-                        # Create default stats for common teams
-                        self.create_default_stats()
-                        
-            except FileNotFoundError:
-                st.warning("2025_NFL_OFFENSE.json not found, using default team stats")
-                self.create_default_stats()
+                    self.team_stats[team_abbr] = [win_pct, points_per_game, points_against]
+                
+                st.success(f"Loaded stats for {len(self.team_stats)} teams")
             
             return True
         except Exception as e:
             st.error(f"Error loading data: {e}")
             return False
-    
-    def create_default_stats(self):
-        """Create default team stats for demonstration"""
-        default_teams = {
-            'KC': [0.75, 28.5, 19.2],   # [win_pct, offense, defense]
-            'BUF': [0.65, 26.8, 21.1],
-            'SF': [0.80, 30.1, 18.5],
-            'PHI': [0.70, 27.3, 20.8],
-            'DAL': [0.68, 26.9, 21.3],
-            'BAL': [0.72, 27.8, 19.8],
-            'MIA': [0.66, 29.2, 23.1],
-            'CIN': [0.62, 25.7, 22.4],
-            'GB': [0.58, 24.3, 23.7],
-            'DET': [0.64, 26.1, 22.9],
-            'LAR': [0.59, 25.8, 23.5],
-            'SEA': [0.55, 24.2, 24.8],
-            'LV': [0.45, 21.8, 25.9],
-            'DEN': [0.52, 23.1, 24.2],
-            'LAC': [0.57, 25.3, 24.1],
-            'NE': [0.35, 18.9, 27.3],
-            'NYJ': [0.42, 20.5, 26.1],
-            'CHI': [0.48, 22.7, 25.3],
-            'MIN': [0.53, 24.8, 23.9],
-            'NO': [0.51, 23.5, 24.4],
-            'ATL': [0.49, 22.9, 24.7],
-            'CAR': [0.30, 17.8, 28.5],
-            'JAX': [0.56, 24.6, 23.8],
-            'IND': [0.54, 24.1, 24.0],
-            'HOU': [0.50, 23.3, 24.5],
-            'TEN': [0.47, 22.4, 25.1],
-            'CLE': [0.61, 25.2, 22.6],
-            'PIT': [0.58, 23.9, 23.4],
-            'NYG': [0.40, 19.8, 26.8],
-            'WAS': [0.43, 21.2, 26.3],
-            'ARI': [0.46, 22.1, 25.6],
-            'TB': [0.55, 24.5, 24.2]
-        }
-        self.team_stats = default_teams
-        st.info("Using default team statistics for demonstration")
     
     def calculate_implied_probability(self, american_odds):
         """Convert American odds to implied probability"""
@@ -178,12 +144,10 @@ class NFLPredictor:
             return 45.0
             
         home_offense = self.team_stats[home_team][1]
-        home_defense = self.team_stats[home_team][2]
         away_offense = self.team_stats[away_team][1]
-        away_defense = self.team_stats[away_team][2]
         
-        # Simple average of team tendencies
-        total = (home_offense + away_offense + home_defense + away_defense) / 2
+        # Simple average of both teams' offensive capabilities
+        total = (home_offense + away_offense) * 1.1  # Adjust for typical game totals
         return round(total * 2) / 2  # Round to nearest 0.5
 
 def main():
@@ -198,37 +162,37 @@ def main():
         st.stop()
         
     if not predictor.load_data():
-        st.warning("Continuing with default data for demonstration")
+        st.error("Failed to load data files")
+        st.stop()
     
-    st.success("✅ Model loaded successfully!")
+    st.success("✅ Model and data loaded successfully!")
     
     # Display predictions for each game
-    st.header("🎯 Game Predictions")
-    
-    if predictor.schedule is None or len(predictor.schedule) == 0:
-        st.error("No schedule data loaded. Using sample games.")
-        # Create sample games
-        sample_games = [
-            {'home_team': 'KC', 'away_team': 'BUF', 'time': '8:15 PM'},
-            {'home_team': 'SF', 'away_team': 'SEA', 'time': '4:25 PM'},
-            {'home_team': 'DAL', 'away_team': 'PHI', 'time': '4:25 PM'}
-        ]
-        predictor.schedule = pd.DataFrame(sample_games)
+    st.header("🎯 Week 10 Game Predictions")
     
     for _, game in predictor.schedule.iterrows():
-        home_team = game['home_team']
-        away_team = game['away_team']
-        game_time = game.get('time', 'TBD')
+        home_full = game['home']
+        away_full = game['away']
+        game_date = game['date']
         
-        # Find matching odds
+        # Convert to abbreviations
+        home_team = predictor.get_team_abbreviation(home_full)
+        away_team = predictor.get_team_abbreviation(away_full)
+        
+        # Find matching odds - we need to handle this carefully since odds might use different naming
         game_odds = None
         if predictor.odds is not None and len(predictor.odds) > 0:
-            matching_odds = predictor.odds[
-                (predictor.odds['home_team'] == home_team) & 
-                (predictor.odds['away_team'] == away_team)
-            ]
-            if len(matching_odds) > 0:
-                game_odds = matching_odds.iloc[0]
+            # Try to find matching game by team names
+            for _, odds_row in predictor.odds.iterrows():
+                # Check if this odds row matches our game
+                odds_home = odds_row.get('home_team', '')
+                odds_away = odds_row.get('away_team', '')
+                
+                # Simple matching - you might need to adjust this based on your odds file structure
+                if (home_team in odds_home or odds_home in home_full or 
+                    away_team in odds_away or odds_away in away_full):
+                    game_odds = odds_row
+                    break
         
         # Make prediction
         home_win_prob = predictor.predict_game(home_team, away_team)
@@ -243,8 +207,9 @@ def main():
         col1, col2, col3 = st.columns([2, 1, 1])
         
         with col1:
-            st.subheader(f"{away_team} @ {home_team}")
-            st.caption(f"Time: {game_time}")
+            st.subheader(f"{away_full} @ {home_full}")
+            st.caption(f"Date: {game_date}")
+            st.caption(f"Teams: {away_team} @ {home_team}")
             
             # Vegas Odds
             st.markdown("**Vegas Odds:**")
@@ -269,7 +234,7 @@ def main():
                 st.write(f"Total: **{vegas_total}**")
                 st.write(f"Moneyline: {home_team} {home_ml} | {away_team} {away_ml}")
             else:
-                st.write("Vegas odds: Not available")
+                st.write("Vegas odds: Not available for this game")
                 vegas_spread = 0
                 vegas_total = 45.0
         
