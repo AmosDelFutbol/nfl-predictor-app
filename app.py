@@ -1,786 +1,254 @@
+# app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
-from pathlib import Path
-from datetime import datetime
-from sklearn.linear_model import LinearRegression
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error
-import warnings
-import joblib
-import os
 import json
-warnings.filterwarnings('ignore')
+import pickle
+from datetime import datetime
 
-# Configure the page for better layout
+# Set page config
 st.set_page_config(
-    page_title="NFL Predictor Pro",
+    page_title="NFL Week 10 Predictions",
     page_icon="🏈",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    layout="wide"
 )
 
-# Custom CSS to fix layout issues
-st.markdown("""
-<style>
-    /* Main container styling */
-    .main .block-container {
-        padding-top: 2rem;
-        padding-bottom: 2rem;
-    }
+class NFLPredictor:
+    def __init__(self):
+        self.model = None
+        self.schedule = None
+        self.odds = None
+        self.team_stats = {}
+        
+    def load_model(self):
+        """Load the trained model"""
+        try:
+            with open('nfl_model.pkl', 'rb') as f:
+                self.model = pickle.load(f)
+            return True
+        except FileNotFoundError:
+            st.error("Model file 'nfl_model.pkl' not found. Please run training first.")
+            return False
     
-    /* Fix expander width */
-    .streamlit-expanderHeader {
-        font-size: 1.1rem;
-        font-weight: 600;
-    }
+    def load_data(self):
+        """Load schedule and odds data"""
+        try:
+            with open('week_10_schedule.json', 'r') as f:
+                self.schedule = pd.DataFrame(json.load(f))
+            
+            with open('week_10_odds.json', 'r') as f:
+                self.odds = pd.DataFrame(json.load(f))
+            
+            # Load team stats from your 2025 data
+            with open('2025_NFL_OFFENSE.json', 'r') as f:
+                offense_data = pd.DataFrame(json.load(f))
+                # Process offense data to match our feature format
+                for _, team in offense_data.iterrows():
+                    team_abbr = team['team_abbr']  # Adjust based on your actual column names
+                    self.team_stats[team_abbr] = [
+                        team.get('win_pct', 0.5),      # You may need to calculate this
+                        team.get('points_per_game', 23.0),
+                        team.get('points_allowed_per_game', 23.0)
+                    ]
+            
+            return True
+        except FileNotFoundError as e:
+            st.error(f"Data file not found: {e}")
+            return False
     
-    /* Ensure content fits within screen */
-    .css-1d391kg {
-        max-width: 100%;
-    }
-    
-    /* Better column spacing */
-    .css-1r6slb0 {
-        gap: 1rem;
-    }
-    
-    /* Team name wrapping */
-    .team-name {
-        font-weight: bold;
-        word-wrap: break-word;
-        max-width: 200px;
-    }
-    
-    /* Metric card styling */
-    [data-testid="metric-container"] {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 10px;
-        border: 1px solid #e6e6e6;
-    }
-    
-    /* Reduce padding in columns */
-    .css-1r6slb0 > div {
-        padding: 0.5rem;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-def load_nfl_data():
-    """Load the NFL betting data"""
-    try:
-        df = pd.read_csv("spreadspoke_scores.csv")
-        return df
-    except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
-        return None
-
-def load_nfl_schedule():
-    """Load the 2025 NFL schedule from JSON file"""
-    try:
-        with open("nfl_2025_schedule.json", 'r') as f:
-            schedule = json.load(f)
-        return schedule
-    except Exception as e:
-        st.error(f"❌ Error loading schedule: {e}")
-        return None
-
-def load_vegas_odds(week):
-    """Load Vegas odds for specific week"""
-    try:
-        odds_file = f"week_{week}_odds.json"
-        if os.path.exists(odds_file):
-            with open(odds_file, 'r') as f:
-                odds = json.load(f)
-            return odds
+    def calculate_implied_probability(self, american_odds):
+        """Convert American odds to implied probability"""
+        if american_odds > 0:
+            return 100 / (american_odds + 100)
         else:
+            return abs(american_odds) / (abs(american_odds) + 100)
+    
+    def predict_game(self, home_team, away_team):
+        """Predict game outcome using the trained model"""
+        if home_team not in self.team_stats or away_team not in self.team_stats:
             return None
-    except Exception as e:
-        return None
-
-def validate_data(df):
-    """Validate the loaded data has required columns"""
-    required_columns = ['team_home', 'team_away', 'score_home', 'score_away', 
-                       'team_favorite_id', 'spread_favorite', 'over_under_line',
-                       'schedule_season', 'schedule_date', 'schedule_week']
-    
-    missing_columns = [col for col in required_columns if col not in df.columns]
-    if missing_columns:
-        st.error(f"❌ Missing required columns: {missing_columns}")
-        return False
-    return True
-
-def create_team_mapping():
-    """Create mapping between team abbreviations and full names"""
-    team_mapping = {
-        'BUF': 'Buffalo Bills', 'MIA': 'Miami Dolphins', 'NE': 'New England Patriots', 'NYJ': 'New York Jets',
-        'BAL': 'Baltimore Ravens', 'CIN': 'Cincinnati Bengals', 'CLE': 'Cleveland Browns', 'PIT': 'Pittsburgh Steelers',
-        'HOU': 'Houston Texans', 'IND': 'Indianapolis Colts', 'JAX': 'Jacksonville Jaguars', 'TEN': 'Tennessee Titans',
-        'DEN': 'Denver Broncos', 'KC': 'Kansas City Chiefs', 'LV': 'Las Vegas Raiders', 'LAC': 'Los Angeles Chargers',
-        'DAL': 'Dallas Cowboys', 'NYG': 'New York Giants', 'PHI': 'Philadelphia Eagles', 'WAS': 'Washington Commanders',
-        'CHI': 'Chicago Bears', 'DET': 'Detroit Lions', 'GB': 'Green Bay Packers', 'MIN': 'Minnesota Vikings',
-        'ATL': 'Atlanta Falcons', 'CAR': 'Carolina Panthers', 'NO': 'New Orleans Saints', 'TB': 'Tampa Bay Buccaneers',
-        'ARI': 'Arizona Cardinals', 'LAR': 'Los Angeles Rams', 'SF': 'San Francisco 49ers', 'SEA': 'Seattle Seahawks'
-    }
-    return team_mapping
-
-def standardize_team_data(df, team_mapping):
-    """Standardize team names and map abbreviations to full names"""
-    df['team_favorite'] = df['team_favorite_id'].map(team_mapping)
-    
-    washington_mapping = {
-        'Washington Redskins': 'Washington Commanders',
-        'Washington Football Team': 'Washington Commanders',
-        'Washington Commanders': 'Washington Commanders'
-    }
-    
-    df['team_home'] = df['team_home'].replace(washington_mapping)
-    df['team_away'] = df['team_away'].replace(washington_mapping)
-    df['team_favorite'] = df['team_favorite'].replace(washington_mapping)
-    
-    return df
-
-def are_teams_in_same_division(team1, team2):
-    """Check if two teams are in the same division"""
-    divisions = {
-        'AFC East': ['Buffalo Bills', 'Miami Dolphins', 'New England Patriots', 'New York Jets'],
-        'AFC North': ['Baltimore Ravens', 'Cincinnati Bengals', 'Cleveland Browns', 'Pittsburgh Steelers'],
-        'AFC South': ['Houston Texans', 'Indianapolis Colts', 'Jacksonville Jaguars', 'Tennessee Titans'],
-        'AFC West': ['Denver Broncos', 'Kansas City Chiefs', 'Las Vegas Raiders', 'Los Angeles Chargers'],
-        'NFC East': ['Dallas Cowboys', 'New York Giants', 'Philadelphia Eagles', 'Washington Commanders'],
-        'NFC North': ['Chicago Bears', 'Detroit Lions', 'Green Bay Packers', 'Minnesota Vikings'],
-        'NFC South': ['Atlanta Falcons', 'Carolina Panthers', 'New Orleans Saints', 'Tampa Bay Buccaneers'],
-        'NFC West': ['Arizona Cardinals', 'Los Angeles Rams', 'San Francisco 49ers', 'Seattle Seahawks']
-    }
-    
-    for division, teams in divisions.items():
-        if team1 in teams and team2 in teams:
-            return True
-    return False
-
-def is_primetime(date_str):
-    """Check if game is in primetime"""
-    try:
-        game_date = pd.to_datetime(date_str)
-        if game_date.weekday() in [3, 6, 0]:  # Thursday, Sunday, Monday
-            return True
-        return False
-    except:
-        return False
-
-def add_advanced_metrics(df):
-    """Add advanced betting and performance metrics"""
-    df['score_differential'] = abs(df['score_home'] - df['score_away'])
-    df['total_points'] = df['score_home'] + df['score_away']
-    
-    df['favorite_won'] = np.where(
-        ((df['team_favorite'] == df['team_home']) & (df['home_win'] == 1)) |
-        ((df['team_favorite'] == df['team_away']) & (df['away_win'] == 1)), 1, 0
-    )
-    
-    df['close_game'] = (df['score_differential'] <= 7).astype(int)
-    df['blowout_game'] = (df['score_differential'] >= 17).astype(int)
-    df['over_under_differential'] = df['total_points'] - df['over_under_line']
-    
-    return df
-
-def add_advanced_features(df, team_stats):
-    """Add more sophisticated features for better predictions"""
-    def calculate_team_sos(team, df):
-        """Calculate strength of schedule for a team"""
-        team_games = pd.concat([
-            df[df['team_home'] == team],
-            df[df['team_away'] == team]
-        ])
+            
+        home_stats = self.team_stats[home_team]
+        away_stats = self.team_stats[away_team]
         
-        if len(team_games) == 0:
-            return 0.5
+        # Create features array (same format as training)
+        features = np.array([[
+            home_stats[0], home_stats[1], home_stats[2],  # home_win_pct, offense, defense
+            away_stats[0], away_stats[1], away_stats[2],  # away_win_pct, offense, defense
+            1  # home_field advantage
+        ]])
         
-        opponent_win_pct = []
-        for _, game in team_games.iterrows():
-            if game['team_home'] == team:
-                opponent = game['team_away']
-                opponent_wins = team_stats.get(opponent, {}).get('total_wins', 0)
-                opponent_games = team_stats.get(opponent, {}).get('total_games', 1)
-                opponent_win_pct.append(opponent_wins / opponent_games)
-            else:
-                opponent = game['team_home']
-                opponent_wins = team_stats.get(opponent, {}).get('total_wins', 0)
-                opponent_games = team_stats.get(opponent, {}).get('total_games', 1)
-                opponent_win_pct.append(opponent_wins / opponent_games)
+        # Get prediction
+        probabilities = self.model.predict_proba(features)[0]
+        home_win_prob = probabilities[1]
         
-        return np.mean(opponent_win_pct) if opponent_win_pct else 0.5
+        return home_win_prob
     
-    sos_cache = {}
-    for team in team_stats.keys():
-        sos_cache[team] = calculate_team_sos(team, df)
-    
-    df['home_sos'] = df['team_home'].map(sos_cache)
-    df['away_sos'] = df['team_away'].map(sos_cache)
-    
-    df['home_efficiency'] = df['score_home'] / (df['over_under_line'] / 2)
-    df['away_efficiency'] = df['score_away'] / (df['over_under_line'] / 2)
-    
-    df['divisional_game'] = df.apply(lambda x: are_teams_in_same_division(x['team_home'], x['team_away']), axis=1)
-    df['primetime_game'] = df['schedule_date'].apply(is_primetime)
-    
-    return df
-
-def prepare_data(df):
-    """Prepare data for 2020-2025 analysis"""
-    team_mapping = create_team_mapping()
-    df = standardize_team_data(df, team_mapping)
-    
-    df_recent = df[df['schedule_season'].between(2020, 2025)].copy()
-    
-    df_recent['score_home'] = pd.to_numeric(df_recent['score_home'], errors='coerce')
-    df_recent['score_away'] = pd.to_numeric(df_recent['score_away'], errors='coerce')
-    df_recent['spread_favorite'] = pd.to_numeric(df_recent['spread_favorite'], errors='coerce')
-    df_recent['over_under_line'] = pd.to_numeric(df_recent['over_under_line'], errors='coerce')
-    
-    df_recent = df_recent.dropna(subset=['score_home', 'score_away', 'team_favorite', 'spread_favorite', 'over_under_line'])
-    
-    df_recent['home_win'] = (df_recent['score_home'] > df_recent['score_away']).astype(int)
-    df_recent['away_win'] = (df_recent['score_home'] < df_recent['score_away']).astype(int)
-    df_recent['tie'] = (df_recent['score_home'] == df_recent['score_away']).astype(int)
-    
-    df_recent['actual_spread'] = df_recent['score_home'] - df_recent['score_away']
-    df_recent['total_points'] = df_recent['score_home'] + df_recent['score_away']
-    
-    df_recent['favorite_covered'] = 0
-    
-    for idx, game in df_recent.iterrows():
-        if game['team_favorite'] == game['team_home']:
-            if game['actual_spread'] > -game['spread_favorite']:
-                df_recent.at[idx, 'favorite_covered'] = 1
+    def convert_prob_to_spread(self, home_win_prob):
+        """Convert win probability to point spread"""
+        # Using common conversion: prob -> spread
+        # 50% = 0, 60% = -3, 70% = -6, etc.
+        if home_win_prob >= 0.5:
+            spread = -((home_win_prob - 0.5) * 14)  # Convert to negative spread for favorite
         else:
-            if game['actual_spread'] < game['spread_favorite']:
-                df_recent.at[idx, 'favorite_covered'] = 1
-    
-    df_recent['underdog_covered'] = 1 - df_recent['favorite_covered']
-    
-    df_recent['over_hit'] = (df_recent['total_points'] > df_recent['over_under_line']).astype(int)
-    df_recent['under_hit'] = (df_recent['total_points'] < df_recent['over_under_line']).astype(int)
-    df_recent['push'] = (df_recent['total_points'] == df_recent['over_under_line']).astype(int)
-    
-    df_recent['winner'] = np.where(df_recent['home_win'] == 1, df_recent['team_home'], 
-                                  np.where(df_recent['away_win'] == 1, df_recent['team_away'], 'Tie'))
-    
-    return df_recent
-
-def calculate_team_stats(df):
-    """Calculate comprehensive team statistics including ATS and Over/Under"""
-    teams = pd.unique(np.concatenate([df['team_home'].unique(), df['team_away'].unique()]))
-    team_stats = {}
-    
-    for team in teams:
-        home_games = df[df['team_home'] == team]
-        home_wins = home_games['home_win'].sum()
-        home_total = len(home_games)
+            spread = ((0.5 - home_win_prob) * 14)   # Positive spread for underdog
         
-        away_games = df[df['team_away'] == team]
-        away_wins = away_games['away_win'].sum()
-        away_total = len(away_games)
+        return round(spread * 2) / 2  # Round to nearest 0.5
+    
+    def predict_total_points(self, home_team, away_team):
+        """Predict total points based on team offensive/defensive stats"""
+        home_offense = self.team_stats[home_team][1]
+        home_defense = self.team_stats[home_team][2]
+        away_offense = self.team_stats[away_team][1]
+        away_defense = self.team_stats[away_team][2]
         
-        total_games = home_total + away_total
-        total_wins = home_wins + away_wins
-        
-        fav_wins = 0
-        fav_losses = 0
-        dog_wins = 0
-        dog_losses = 0
-        
-        fav_ats_wins = 0
-        dog_ats_wins = 0
-        total_ats_wins = 0
-        
-        all_team_games = pd.concat([home_games, away_games])
-        
-        for _, game in all_team_games.iterrows():
-            was_favorite = (game['team_favorite'] == team)
-            
-            if game['team_home'] == team:
-                team_won = (game['home_win'] == 1)
-            else:
-                team_won = (game['away_win'] == 1)
-            
-            if was_favorite:
-                if team_won:
-                    fav_wins += 1
-                else:
-                    fav_losses += 1
-            else:
-                if team_won:
-                    dog_wins += 1
-                else:
-                    dog_losses += 1
-            
-            if was_favorite:
-                if game['favorite_covered'] == 1:
-                    fav_ats_wins += 1
-                    total_ats_wins += 1
-            else:
-                if game['underdog_covered'] == 1:
-                    dog_ats_wins += 1
-                    total_ats_wins += 1
-        
-        team_games = pd.concat([home_games, away_games])
-        overs = len(team_games[team_games['over_hit'] == 1])
-        unders = len(team_games[team_games['under_hit'] == 1])
-        pushes = len(team_games[team_games['push'] == 1])
-        
-        team_stats[team] = {
-            'home_games': home_total,
-            'home_wins': home_wins,
-            'home_losses': home_total - home_wins,
-            'home_win_pct': round(home_wins / home_total * 100, 1) if home_total > 0 else 0,
-            
-            'away_games': away_total,
-            'away_wins': away_wins,
-            'away_losses': away_total - away_wins,
-            'away_win_pct': round(away_wins / away_total * 100, 1) if away_total > 0 else 0,
-            
-            'total_games': total_games,
-            'total_wins': total_wins,
-            'total_losses': total_games - total_wins,
-            'total_win_pct': round(total_wins / total_games * 100, 1) if total_games > 0 else 0,
-            
-            'fav_games': fav_wins + fav_losses,
-            'fav_wins': fav_wins,
-            'fav_losses': fav_losses,
-            'fav_win_pct': round(fav_wins / (fav_wins + fav_losses) * 100, 1) if (fav_wins + fav_losses) > 0 else 0,
-            
-            'dog_games': dog_wins + dog_losses,
-            'dog_wins': dog_wins,
-            'dog_losses': dog_losses,
-            'dog_win_pct': round(dog_wins / (dog_wins + dog_losses) * 100, 1) if (dog_wins + dog_losses) > 0 else 0,
-            
-            'fav_ats_wins': fav_ats_wins,
-            'fav_ats_losses': (fav_wins + fav_losses) - fav_ats_wins,
-            'fav_ats_pct': round(fav_ats_wins / (fav_wins + fav_losses) * 100, 1) if (fav_wins + fav_losses) > 0 else 0,
-            
-            'dog_ats_wins': dog_ats_wins,
-            'dog_ats_losses': (dog_wins + dog_losses) - dog_ats_wins,
-            'dog_ats_pct': round(dog_ats_wins / (dog_wins + dog_losses) * 100, 1) if (dog_wins + dog_losses) > 0 else 0,
-            
-            'total_ats_wins': total_ats_wins,
-            'total_ats_losses': total_games - total_ats_wins,
-            'total_ats_pct': round(total_ats_wins / total_games * 100, 1) if total_games > 0 else 0,
-            
-            'over_games': overs,
-            'under_games': unders,
-            'push_games': pushes,
-            'over_pct': round(overs / (overs + unders) * 100, 1) if (overs + unders) > 0 else 0,
-            'under_pct': round(unders / (overs + unders) * 100, 1) if (overs + unders) > 0 else 0,
-        }
-    
-    return team_stats
-
-def get_week_schedule_from_json(schedule, week):
-    """Get the schedule for a specific week from JSON"""
-    week_str = str(week)
-    if week_str not in schedule['weeks']:
-        st.error(f"❌ Week {week} not found in schedule")
-        return None
-    
-    week_games = schedule['weeks'][week_str]
-    
-    # Convert to DataFrame format
-    games_data = []
-    for game in week_games:
-        games_data.append({
-            'team_home': game['home'],
-            'team_away': game['away'],
-            'schedule_date': game['date']
-        })
-    
-    return pd.DataFrame(games_data)
-
-def create_game_features_for_prediction(home_team, away_team, team_stats, df):
-    """Create features for a specific game prediction"""
-    def get_current_stats(team, games_back=5):
-        team_games = pd.concat([
-            df[df['team_home'] == team],
-            df[df['team_away'] == team]
-        ]).sort_values('schedule_date').tail(games_back)
-        
-        if len(team_games) == 0:
-            return {
-                'recent_win_pct': 0.5,
-                'recent_ppg': 20,
-                'recent_ppg_against': 20,
-                'recent_ats_pct': 0.5
-            }
-        
-        wins = 0
-        points_for = 0
-        points_against = 0
-        ats_wins = 0
-        total_games = len(team_games)
-        
-        for _, game in team_games.iterrows():
-            if game['team_home'] == team:
-                if game['home_win'] == 1:
-                    wins += 1
-                points_for += game['score_home']
-                points_against += game['score_away']
-                if game['team_favorite'] == team and game['favorite_covered'] == 1:
-                    ats_wins += 1
-                elif game['team_favorite'] != team and game['underdog_covered'] == 1:
-                    ats_wins += 1
-            else:
-                if game['away_win'] == 1:
-                    wins += 1
-                points_for += game['score_away']
-                points_against += game['score_home']
-                if game['team_favorite'] == team and game['favorite_covered'] == 1:
-                    ats_wins += 1
-                elif game['team_favorite'] != team and game['underdog_covered'] == 1:
-                    ats_wins += 1
-        
-        return {
-            'recent_win_pct': wins / total_games,
-            'recent_ppg': points_for / total_games,
-            'recent_ppg_against': points_against / total_games,
-            'recent_ats_pct': ats_wins / total_games
-        }
-    
-    home_recent = get_current_stats(home_team)
-    away_recent = get_current_stats(away_team)
-    
-    home_overall = team_stats.get(home_team, {})
-    away_overall = team_stats.get(away_team, {})
-    
-    feature_vector = [
-        home_recent['recent_win_pct'],
-        home_recent['recent_ppg'],
-        home_recent['recent_ppg_against'],
-        home_recent['recent_ats_pct'],
-        home_overall.get('home_win_pct', 0.5) / 100,
-        home_overall.get('total_win_pct', 0.5) / 100,
-        
-        away_recent['recent_win_pct'],
-        away_recent['recent_ppg'],
-        away_recent['recent_ppg_against'],
-        away_recent['recent_ats_pct'],
-        away_overall.get('away_win_pct', 0.5) / 100,
-        away_overall.get('total_win_pct', 0.5) / 100,
-        
-        home_overall.get('home_win_pct', 0.5) / 100 - away_overall.get('away_win_pct', 0.5) / 100,
-        home_recent['recent_ppg'] - away_recent['recent_ppg_against'],
-        away_recent['recent_ppg'] - home_recent['recent_ppg_against'],
-    ]
-    
-    return np.array([feature_vector])
-
-def project_game_score(home_team, away_team, team_stats, df):
-    """Project final score for a game"""
-    def get_team_averages(team):
-        team_games = pd.concat([
-            df[df['team_home'] == team],
-            df[df['team_away'] == team]
-        ]).tail(5)
-        
-        if len(team_games) == 0:
-            return {'ppg': 21, 'ppg_against': 21}
-        
-        points_for = 0
-        points_against = 0
-        
-        for _, game in team_games.iterrows():
-            if game['team_home'] == team:
-                points_for += game['score_home']
-                points_against += game['score_away']
-            else:
-                points_for += game['score_away']
-                points_against += game['score_home']
-        
-        return {
-            'ppg': points_for / len(team_games),
-            'ppg_against': points_against / len(team_games)
-        }
-    
-    home_avg = get_team_averages(home_team)
-    away_avg = get_team_averages(away_team)
-    
-    home_score_proj = (home_avg['ppg'] + away_avg['ppg_against']) / 2
-    away_score_proj = (away_avg['ppg'] + home_avg['ppg_against']) / 2
-    
-    home_field_advantage = 2.5
-    home_score_proj += home_field_advantage
-    away_score_proj -= home_field_advantage / 2
-    
-    return round(home_score_proj), round(away_score_proj)
-
-def calculate_simple_projection(home_team, away_team, team_stats, df):
-    """Calculate projection using simple averages (fallback method)"""
-    def get_team_averages(team):
-        team_games = pd.concat([
-            df[df['team_home'] == team],
-            df[df['team_away'] == team]
-        ]).tail(5)
-        
-        if len(team_games) == 0:
-            return {'ppg': 21, 'ppg_against': 21, 'win_pct': 0.5}
-        
-        points_for = 0
-        points_against = 0
-        wins = 0
-        
-        for _, game in team_games.iterrows():
-            if game['team_home'] == team:
-                points_for += game['score_home']
-                points_against += game['score_away']
-                wins += game['home_win']
-            else:
-                points_for += game['score_away']
-                points_against += game['score_home']
-                wins += game['away_win']
-        
-        return {
-            'ppg': points_for / len(team_games),
-            'ppg_against': points_against / len(team_games),
-            'win_pct': wins / len(team_games)
-        }
-    
-    home_avg = get_team_averages(home_team)
-    away_avg = get_team_averages(away_team)
-    
-    home_score = (home_avg['ppg'] + away_avg['ppg_against']) / 2 + 2.5
-    away_score = (away_avg['ppg'] + home_avg['ppg_against']) / 2 - 1.0
-    
-    home_win_prob = home_avg['win_pct'] * 0.6 + (1 - away_avg['win_pct']) * 0.4
-    
-    return {
-        'home_score': round(home_score),
-        'away_score': round(away_score),
-        'home_win_prob': home_win_prob,
-        'total': round(home_score + away_score)
-    }
-
-def generate_weekly_projections(models, df, team_stats, schedule, season, week):
-    """Generate projections for all games in a specific week using JSON schedule"""
-    st.header(f"📅 WEEK {week} PROJECTIONS - {season} SEASON")
-    
-    # Get the schedule for the week from JSON
-    week_schedule = get_week_schedule_from_json(schedule, week)
-    
-    if week_schedule is None or len(week_schedule) == 0:
-        st.error(f"❌ No games available for {season} Week {week}")
-        return
-    
-    # Check if these are real games or future projections
-    real_games = df[(df['schedule_season'] == season) & (df['schedule_week'] == week)]
-    is_future_week = len(real_games) == 0
-    
-    if is_future_week:
-        st.info("🎯 **FUTURE WEEK PROJECTIONS** - Using 2025 NFL Schedule")
-    else:
-        st.info(f"🎯 **LIVE WEEK ANALYSIS** - Found {len(real_games)} actual games for Week {week}")
-    
-    st.write(f"**📋 Schedule: {len(week_schedule)} games this week**")
-    st.markdown("---")
-    
-    projections = []
-    
-    for _, game in week_schedule.iterrows():
-        home_team = game['team_home']
-        away_team = game['team_away']
-        game_date = game['schedule_date']
-        
-        # Create a more compact expander
-        with st.expander(f"🏈 {away_team} @ {home_team} - {game_date}", expanded=False):
-            # Header with basic info
-            col_header1, col_header2, col_header3 = st.columns([2, 1, 2])
-            with col_header1:
-                st.markdown(f"<div class='team-name'>{away_team}</div>", unsafe_allow_html=True)
-            with col_header2:
-                st.markdown("**@**")
-            with col_header3:
-                st.markdown(f"<div class='team-name'>{home_team}</div>", unsafe_allow_html=True)
-            
-            # Get features for prediction
-            X_new = create_game_features_for_prediction(home_team, away_team, team_stats, df)
-            
-            if models:
-                # ML-based projections
-                projected_spread = models['spread'].predict(X_new)[0]
-                projected_total = models['total'].predict(X_new)[0]
-                win_probability = models['win_prob'].predict_proba(X_new)[0][1]
-                
-                # Determine favorite
-                if projected_spread < 0:
-                    favorite = home_team
-                    underdog = away_team
-                    spread = abs(projected_spread)
-                else:
-                    favorite = away_team
-                    underdog = home_team
-                    spread = projected_spread
-            else:
-                # Fallback to simple projection
-                projection = calculate_simple_projection(home_team, away_team, team_stats, df)
-                win_probability = projection['home_win_prob']
-                projected_total = projection['total']
-                
-                # Simple spread calculation
-                spread = abs(projection['home_score'] - projection['away_score'])
-                if projection['home_score'] > projection['away_score']:
-                    favorite = home_team
-                    underdog = away_team
-                else:
-                    favorite = away_team
-                    underdog = home_team
-            
-            # Score projection
-            home_score, away_score = project_game_score(home_team, away_team, team_stats, df)
-            
-            # Determine game analysis
-            margin = abs(home_score - away_score)
-            total_points = home_score + away_score
-            
-            # Game analysis description
-            if margin > 14:
-                confidence = "HIGH"
-                analysis = f"Expect a dominant performance from {favorite}. This could be a statement game."
-            elif margin > 7:
-                confidence = "MEDIUM"
-                analysis = f"{favorite} should control this game and cover the spread comfortably."
-            else:
-                confidence = "LOW"
-                analysis = "This should be a close, competitive game that could go either way."
-            
-            # Over/Under analysis
-            if total_points > 51:
-                over_under = "STRONG OVER"
-                ou_analysis = "Both offenses should thrive in what could be a shootout."
-            elif total_points > 47:
-                over_under = "LEAN OVER"
-                ou_analysis = "Slightly higher scoring than average expected."
-            elif total_points < 39:
-                over_under = "STRONG UNDER"
-                ou_analysis = "Defensive battle expected with limited scoring opportunities."
-            elif total_points < 43:
-                over_under = "LEAN UNDER"
-                ou_analysis = "Lower scoring affair than typical."
-            else:
-                over_under = "NEUTRAL"
-                ou_analysis = "Game should land around league average scoring."
-            
-            # Main prediction metrics in compact columns
-            col1, col2, col3, col4 = st.columns(4)
-            
-            with col1:
-                st.metric("Score", f"{home_score}-{away_score}")
-                st.metric("Total", f"{total_points}")
-                
-            with col2:
-                st.metric("Spread", f"{favorite} -{spread:.1f}")
-                st.metric("O/U Pick", over_under)
-                
-            with col3:
-                st.metric("Home Win %", f"{win_probability:.1%}")
-                confidence_color = "🟢" if confidence == "HIGH" else "🟡" if confidence == "MEDIUM" else "🔴"
-                st.metric("Confidence", f"{confidence_color} {confidence}")
-                
-            with col4:
-                if home_score > away_score:
-                    st.metric("Predicted Winner", home_team)
-                else:
-                    st.metric("Predicted Winner", away_team)
-                st.metric("Projected Total", f"{projected_total:.1f}")
-            
-            # Analysis sections
-            st.markdown("---")
-            col_analysis1, col_analysis2 = st.columns(2)
-            
-            with col_analysis1:
-                st.write("**🎯 Game Analysis**")
-                st.info(analysis)
-                
-            with col_analysis2:
-                st.write("**📈 Points Outlook**")
-                st.info(ou_analysis)
-            
-            projections.append({
-                'home_team': home_team,
-                'away_team': away_team,
-                'home_score': home_score,
-                'away_score': away_score,
-                'favorite': favorite,
-                'spread': spread,
-                'total': projected_total,
-                'over_under': over_under,
-                'home_win_prob': win_probability,
-                'confidence': confidence,
-                'analysis': analysis
-            })
-    
-    return projections
+        # Simple average of team tendencies
+        total = (home_offense + away_offense + (home_defense + away_defense)) / 2
+        return round(total * 2) / 2  # Round to nearest 0.5
 
 def main():
-    st.title("🏈 NFL Predictor Pro")
-    st.markdown("### Machine Learning Powered NFL Predictions")
+    st.title("🏈 NFL Week 10 Predictions & Betting Analysis")
+    st.markdown("### Model Projections vs. Vegas Odds")
+    
+    # Initialize predictor
+    predictor = NFLPredictor()
     
     # Load data
-    with st.spinner("Loading data..."):
-        df = load_nfl_data()
-        schedule = load_nfl_schedule()
-        
-        if df is None:
-            st.error("❌ Could not load historical data.")
-            return
-            
-        if schedule is None:
-            st.warning("⚠️ Could not load schedule. Some features may not work.")
-        
-        if not validate_data(df):
-            return
-        
-        df_prepared = prepare_data(df)
-        team_stats = calculate_team_stats(df_prepared)
-        df_prepared = add_advanced_features(df_prepared, team_stats)
-        df_prepared = add_advanced_metrics(df_prepared)
+    if not predictor.load_model() or not predictor.load_data():
+        st.stop()
     
-    # Sidebar
-    with st.sidebar:
-        st.header("🎯 Settings")
+    st.success("✅ Model and data loaded successfully!")
+    
+    # Display predictions for each game
+    st.header("🎯 Game Predictions")
+    
+    for _, game in predictor.schedule.iterrows():
+        home_team = game['home_team']
+        away_team = game['away_team']
+        game_time = game.get('time', 'TBD')
         
-        # WEEK SELECTION - DEFAULT TO WEEK 9
-        week = st.selectbox(
-            "Select Week", 
-            options=list(range(1, 19)),
-            index=8  # This sets Week 9 as default (index 8 = week 9)
-        )
+        # Find matching odds
+        game_odds = predictor.odds[
+            (predictor.odds['home_team'] == home_team) & 
+            (predictor.odds['away_team'] == away_team)
+        ]
         
-        # Vegas odds availability
-        vegas_odds = load_vegas_odds(week)
-        if vegas_odds:
-            st.success(f"✅ Vegas odds available for Week {week}")
+        if len(game_odds) == 0:
+            continue
+            
+        game_odds = game_odds.iloc[0]
+        
+        # Make prediction
+        home_win_prob = predictor.predict_game(home_team, away_team)
+        if home_win_prob is None:
+            continue
+        
+        # Calculate model projections
+        model_spread = predictor.convert_prob_to_spread(home_win_prob)
+        model_total = predictor.predict_total_points(home_team, away_team)
+        
+        # Get Vegas data
+        vegas_spread = game_odds.get('spread', 0)
+        vegas_total = game_odds.get('over_under', 45.0)
+        home_ml = game_odds.get('home_moneyline', 0)
+        away_ml = game_odds.get('away_moneyline', 0)
+        
+        # Determine favorite based on spread
+        if vegas_spread < 0:
+            vegas_favorite = home_team
+            vegas_underdog = away_team
+            vegas_fav_spread = abs(vegas_spread)
         else:
-            st.info(f"ℹ️ No Vegas odds available for Week {week}")
+            vegas_favorite = away_team
+            vegas_underdog = home_team
+            vegas_fav_spread = vegas_spread
+        
+        # Model's favorite
+        if home_win_prob > 0.5:
+            model_favorite = home_team
+            model_underdog = away_team
+            model_fav_spread = abs(model_spread)
+        else:
+            model_favorite = away_team
+            model_underdog = home_team
+            model_fav_spread = model_spread
+        
+        # Create columns for display
+        col1, col2, col3 = st.columns([2, 1, 1])
+        
+        with col1:
+            st.subheader(f"{away_team} @ {home_team}")
+            st.caption(f"Time: {game_time}")
+            
+            # Vegas Odds
+            st.markdown("**Vegas Odds:**")
+            st.write(f"Spread: {vegas_favorite} -{vegas_fav_spread}")
+            st.write(f"Total: {vegas_total}")
+            st.write(f"Moneyline: {home_team} {home_ml} | {away_team} {away_ml}")
+        
+        with col2:
+            st.markdown("**Model Projections:**")
+            st.metric("Home Win Probability", f"{home_win_prob:.1%}")
+            st.metric("Projected Spread", f"{model_favorite} -{model_fav_spread}")
+            st.metric("Projected Total", f"{model_total}")
+        
+        with col3:
+            st.markdown("**Betting Recommendations:**")
+            
+            # Spread Analysis
+            spread_diff = abs(model_fav_spread - vegas_fav_spread)
+            if spread_diff > 1.0:
+                if model_fav_spread < vegas_fav_spread:
+                    st.success(f"📈 BET: {model_favorite} (Model likes favorite more)")
+                else:
+                    st.success(f"📈 BET: {model_underdog} (Model thinks underdog covers)")
+            else:
+                st.info("⚖️ Spread: No strong opinion")
+            
+            # Total Analysis
+            total_diff = abs(model_total - vegas_total)
+            if total_diff > 2.0:
+                if model_total > vegas_total:
+                    st.success(f"📈 BET: OVER {vegas_total}")
+                else:
+                    st.success(f"📈 BET: UNDER {vegas_total}")
+            else:
+                st.info("⚖️ Total: No strong opinion")
+            
+            # Moneyline Value
+            model_implied_ml = -100 / home_win_prob + 100 if home_win_prob > 0.5 else 100 / (1 - home_win_prob) - 100
+            if home_win_prob > 0.6 and home_ml < model_implied_ml:
+                st.success(f"💰 VALUE: {home_team} ML")
+            elif home_win_prob < 0.4 and away_ml < model_implied_ml:
+                st.success(f"💰 VALUE: {away_team} ML")
         
         st.markdown("---")
-        st.write("**About:**")
-        st.write("This app uses machine learning to generate NFL game projections based on historical data from 2020-2025.")
     
-    # Load models
-    models = None
-    try:
-        if os.path.exists("nfl_models.joblib"):
-            models = joblib.load("nfl_models.joblib")
-            st.sidebar.success("✅ ML Models Loaded")
-        else:
-            st.sidebar.info("ℹ️ Using simple projection models")
-    except Exception as e:
-        st.sidebar.info("ℹ️ Using simple projection models")
+    # Summary section
+    st.header("📊 Model Summary")
     
-    # Generate projections for the selected week
-    generate_weekly_projections(models, df_prepared, team_stats, schedule, 2025, week)
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("How to Read This Analysis")
+        st.markdown("""
+        - **Spread Differences**: When model spread differs from Vegas by >1 point
+        - **Total Differences**: When model total differs from Vegas by >2 points  
+        - **Moneyline Value**: When model probability suggests better odds than offered
+        - **Green Recommendations**: Strong betting opportunities
+        - **Blue Info**: Close calls, no strong edge
+        """)
+    
+    with col2:
+        st.subheader("About the Model")
+        st.markdown("""
+        - **Trained on**: Team performance statistics (win %, offense, defense)
+        - **Predicts**: Game outcomes based on team strength
+        - **Comparison**: Finds discrepancies between model projections and betting markets
+        - **Goal**: Identify value betting opportunities
+        """)
+    
+    st.info("⚠️ Remember: Betting involves risk. These are projections, not guarantees.")
 
 if __name__ == "__main__":
     main()
