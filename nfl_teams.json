@@ -1,0 +1,240 @@
+[
+ {
+   "team_name": "Arizona Cardinals",
+   "team_name_short": "Cardinals",
+   "team_id": "ARI",
+   "team_id_pfr": "CRD",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Atlanta Falcons",
+   "team_name_short": "Falcons",
+   "team_id": "ATL",
+   "team_id_pfr": "ATL",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Baltimore Ravens",
+   "team_name_short": "Ravens",
+   "team_id": "BAL",
+   "team_id_pfr": "RAV",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Buffalo Bills",
+   "team_name_short": "Bills",
+   "team_id": "BUF",
+   "team_id_pfr": "BUF",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Carolina Panthers",
+   "team_name_short": "Panthers",
+   "team_id": "CAR",
+   "team_id_pfr": "CAR",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Chicago Bears",
+   "team_name_short": "Bears",
+   "team_id": "CHI",
+   "team_id_pfr": "CHI",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Cincinnati Bengals",
+   "team_name_short": "Bengals",
+   "team_id": "CIN",
+   "team_id_pfr": "CIN",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Cleveland Browns",
+   "team_name_short": "Browns",
+   "team_id": "CLE",
+   "team_id_pfr": "CLE",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Dallas Cowboys",
+   "team_name_short": "Cowboys",
+   "team_id": "DAL",
+   "team_id_pfr": "DAL",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Denver Broncos",
+   "team_name_short": "Broncos",
+   "team_id": "DEN",
+   "team_id_pfr": "DEN",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Detroit Lions",
+   "team_name_short": "Lions",
+   "team_id": "DET",
+   "team_id_pfr": "DET",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Green Bay Packers",
+   "team_name_short": "Packers",
+   "team_id": "GB",
+   "team_id_pfr": "GNB",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Houston Texans",
+   "team_name_short": "Texans",
+   "team_id": "HOU",
+   "team_id_pfr": "HTX",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Indianapolis Colts",
+   "team_name_short": "Colts",
+   "team_id": "IND",
+   "team_id_pfr": "CLT",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Jacksonville Jaguars",
+   "team_name_short": "Jaguars",
+   "team_id": "JAX",
+   "team_id_pfr": "JAX",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Kansas City Chiefs",
+   "team_name_short": "Chiefs",
+   "team_id": "KC",
+   "team_id_pfr": "KAN",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Las Vegas Raiders",
+   "team_name_short": "Raiders",
+   "team_id": "LVR",
+   "team_id_pfr": "RAI",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Los Angeles Chargers",
+   "team_name_short": "Chargers",
+   "team_id": "LAC",
+   "team_id_pfr": "SDG",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Los Angeles Rams",
+   "team_name_short": "Rams",
+   "team_id": "LAR",
+   "team_id_pfr": "RAM",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Miami Dolphins",
+   "team_name_short": "Dolphins",
+   "team_id": "MIA",
+   "team_id_pfr": "MIA",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Minnesota Vikings",
+   "team_name_short": "Vikings",
+   "team_id": "MIN",
+   "team_id_pfr": "MIN",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "New England Patriots",
+   "team_name_short": "Patriots",
+   "team_id": "NE",
+   "team_id_pfr": "NWE",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "New Orleans Saints",
+   "team_name_short": "Saints",
+   "team_id": "NO",
+   "team_id_pfr": "NOR",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "New York Giants",
+   "team_name_short": "Giants",
+   "team_id": "NYG",
+   "team_id_pfr": "NYG",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "New York Jets",
+   "team_name_short": "Jets",
+   "team_id": "NYJ",
+   "team_id_pfr": "NYJ",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Philadelphia Eagles",
+   "team_name_short": "Eagles",
+   "team_id": "PHI",
+   "team_id_pfr": "PHI",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Pittsburgh Steelers",
+   "team_name_short": "Steelers",
+   "team_id": "PIT",
+   "team_id_pfr": "PIT",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "San Francisco 49ers",
+   "team_name_short": "49ers",
+   "team_id": "SF",
+   "team_id_pfr": "SFO",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Seattle Seahawks",
+   "team_name_short": "Seahawks",
+   "team_id": "SEA",
+   "team_id_pfr": "SEA",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Tampa Bay Buccaneers",
+   "team_name_short": "Buccaneers",
+   "team_id": "TB",
+   "team_id_pfr": "TAM",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Tennessee Titans",
+   "team_name_short": "Titans",
+   "team_id": "TEN",
+   "team_id_pfr": "OTI",
+   "team_conference": "AFC"
+ },
+ {
+   "team_name": "Washington Commanders",
+   "team_name_short": "Washington",
+   "team_id": "WAS",
+   "team_id_pfr": "WAS",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Washington Football Team",
+   "team_name_short": "Washington",
+   "team_id": "WAS",
+   "team_id_pfr": "WAS",
+   "team_conference": "NFC"
+ },
+ {
+   "team_name": "Washington Redskins",
+   "team_name_short": "Washington",
+   "team_id": "WAS",
+   "team_id_pfr": "WAS",
+   "team_conference": "NFC"
+ }
+]
