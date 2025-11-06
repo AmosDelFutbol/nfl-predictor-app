@@ -1,0 +1,362 @@
+{
+  "metadata": {
+    "calculation_date": "2025-11-06T09:35:18.463504",
+    "data_source": "spreadspoke_scores.json",
+    "total_teams": 32,
+    "sos_method": "combined_win_pct_elo"
+  },
+  "sos_rankings": {
+    "San Francisco 49ers": {
+      "combined_sos": 0.532,
+      "win_pct_sos": 0.517,
+      "elo_sos": 0.555,
+      "team_win_pct": 0.5882352941176471,
+      "wins": 30,
+      "losses": 21,
+      "ties": 0,
+      "elo_rating": 1523,
+      "opponents_faced": 51
+    },
+    "Las Vegas Raiders": {
+      "combined_sos": 0.54,
+      "win_pct_sos": 0.524,
+      "elo_sos": 0.564,
+      "team_win_pct": 0.3181818181818182,
+      "wins": 14,
+      "losses": 30,
+      "ties": 0,
+      "elo_rating": 1357,
+      "opponents_faced": 44
+    },
+    "Tampa Bay Buccaneers": {
+      "combined_sos": 0.497,
+      "win_pct_sos": 0.5,
+      "elo_sos": 0.493,
+      "team_win_pct": 0.5625,
+      "wins": 27,
+      "losses": 21,
+      "ties": 0,
+      "elo_rating": 1573,
+      "opponents_faced": 48
+    },
+    "New York Jets": {
+      "combined_sos": 0.514,
+      "win_pct_sos": 0.509,
+      "elo_sos": 0.521,
+      "team_win_pct": 0.29545454545454547,
+      "wins": 13,
+      "losses": 31,
+      "ties": 0,
+      "elo_rating": 1357,
+      "opponents_faced": 44
+    },
+    "Kansas City Chiefs": {
+      "combined_sos": 0.532,
+      "win_pct_sos": 0.52,
+      "elo_sos": 0.551,
+      "team_win_pct": 0.7636363636363637,
+      "wins": 42,
+      "losses": 13,
+      "ties": 0,
+      "elo_rating": 1680,
+      "opponents_faced": 55
+    },
+    "New York Giants": {
+      "combined_sos": 0.549,
+      "win_pct_sos": 0.535,
+      "elo_sos": 0.571,
+      "team_win_pct": 0.2765957446808511,
+      "wins": 13,
+      "losses": 34,
+      "ties": 0,
+      "elo_rating": 1344,
+      "opponents_faced": 47
+    },
+    "Los Angeles Chargers": {
+      "combined_sos": 0.491,
+      "win_pct_sos": 0.49,
+      "elo_sos": 0.492,
+      "team_win_pct": 0.48936170212765956,
+      "wins": 23,
+      "losses": 24,
+      "ties": 0,
+      "elo_rating": 1530,
+      "opponents_faced": 47
+    },
+    "Los Angeles Rams": {
+      "combined_sos": 0.524,
+      "win_pct_sos": 0.518,
+      "elo_sos": 0.533,
+      "team_win_pct": 0.574468085106383,
+      "wins": 27,
+      "losses": 20,
+      "ties": 0,
+      "elo_rating": 1603,
+      "opponents_faced": 47
+    },
+    "Denver Broncos": {
+      "combined_sos": 0.503,
+      "win_pct_sos": 0.5,
+      "elo_sos": 0.508,
+      "team_win_pct": 0.5652173913043478,
+      "wins": 26,
+      "losses": 20,
+      "ties": 0,
+      "elo_rating": 1589,
+      "opponents_faced": 46
+    },
+    "Indianapolis Colts": {
+      "combined_sos": 0.429,
+      "win_pct_sos": 0.446,
+      "elo_sos": 0.403,
+      "team_win_pct": 0.5333333333333333,
+      "wins": 24,
+      "losses": 21,
+      "ties": 0,
+      "elo_rating": 1532,
+      "opponents_faced": 45
+    },
+    "Houston Texans": {
+      "combined_sos": 0.48,
+      "win_pct_sos": 0.484,
+      "elo_sos": 0.474,
+      "team_win_pct": 0.5416666666666666,
+      "wins": 26,
+      "losses": 22,
+      "ties": 0,
+      "elo_rating": 1516,
+      "opponents_faced": 48
+    },
+    "Philadelphia Eagles": {
+      "combined_sos": 0.488,
+      "win_pct_sos": 0.489,
+      "elo_sos": 0.486,
+      "team_win_pct": 0.7307692307692307,
+      "wins": 38,
+      "losses": 14,
+      "ties": 0,
+      "elo_rating": 1698,
+      "opponents_faced": 52
+    },
+    "Minnesota Vikings": {
+      "combined_sos": 0.523,
+      "win_pct_sos": 0.511,
+      "elo_sos": 0.54,
+      "team_win_pct": 0.5652173913043478,
+      "wins": 26,
+      "losses": 20,
+      "ties": 0,
+      "elo_rating": 1573,
+      "opponents_faced": 46
+    },
+    "New England Patriots": {
+      "combined_sos": 0.469,
+      "win_pct_sos": 0.481,
+      "elo_sos": 0.45,
+      "team_win_pct": 0.35555555555555557,
+      "wins": 16,
+      "losses": 29,
+      "ties": 0,
+      "elo_rating": 1452,
+      "opponents_faced": 45
+    },
+    "New Orleans Saints": {
+      "combined_sos": 0.488,
+      "win_pct_sos": 0.478,
+      "elo_sos": 0.504,
+      "team_win_pct": 0.35555555555555557,
+      "wins": 16,
+      "losses": 29,
+      "ties": 0,
+      "elo_rating": 1339,
+      "opponents_faced": 45
+    },
+    "Green Bay Packers": {
+      "combined_sos": 0.531,
+      "win_pct_sos": 0.519,
+      "elo_sos": 0.548,
+      "team_win_pct": 0.5851063829787234,
+      "wins": 27,
+      "losses": 19,
+      "ties": 1,
+      "elo_rating": 1577,
+      "opponents_faced": 47
+    },
+    "Chicago Bears": {
+      "combined_sos": 0.534,
+      "win_pct_sos": 0.521,
+      "elo_sos": 0.554,
+      "team_win_pct": 0.38636363636363635,
+      "wins": 17,
+      "losses": 27,
+      "ties": 0,
+      "elo_rating": 1466,
+      "opponents_faced": 44
+    },
+    "Carolina Panthers": {
+      "combined_sos": 0.466,
+      "win_pct_sos": 0.478,
+      "elo_sos": 0.447,
+      "team_win_pct": 0.28888888888888886,
+      "wins": 13,
+      "losses": 32,
+      "ties": 0,
+      "elo_rating": 1409,
+      "opponents_faced": 45
+    },
+    "Atlanta Falcons": {
+      "combined_sos": 0.473,
+      "win_pct_sos": 0.471,
+      "elo_sos": 0.475,
+      "team_win_pct": 0.45454545454545453,
+      "wins": 20,
+      "losses": 24,
+      "ties": 0,
+      "elo_rating": 1429,
+      "opponents_faced": 44
+    },
+    "Miami Dolphins": {
+      "combined_sos": 0.471,
+      "win_pct_sos": 0.468,
+      "elo_sos": 0.475,
+      "team_win_pct": 0.46808510638297873,
+      "wins": 22,
+      "losses": 25,
+      "ties": 0,
+      "elo_rating": 1418,
+      "opponents_faced": 47
+    },
+    "Tennessee Titans": {
+      "combined_sos": 0.495,
+      "win_pct_sos": 0.493,
+      "elo_sos": 0.499,
+      "team_win_pct": 0.22727272727272727,
+      "wins": 10,
+      "losses": 34,
+      "ties": 0,
+      "elo_rating": 1286,
+      "opponents_faced": 44
+    },
+    "Seattle Seahawks": {
+      "combined_sos": 0.492,
+      "win_pct_sos": 0.491,
+      "elo_sos": 0.494,
+      "team_win_pct": 0.6,
+      "wins": 27,
+      "losses": 18,
+      "ties": 0,
+      "elo_rating": 1591,
+      "opponents_faced": 45
+    },
+    "Jacksonville Jaguars": {
+      "combined_sos": 0.492,
+      "win_pct_sos": 0.495,
+      "elo_sos": 0.487,
+      "team_win_pct": 0.45652173913043476,
+      "wins": 21,
+      "losses": 25,
+      "ties": 0,
+      "elo_rating": 1458,
+      "opponents_faced": 46
+    },
+    "Baltimore Ravens": {
+      "combined_sos": 0.539,
+      "win_pct_sos": 0.533,
+      "elo_sos": 0.549,
+      "team_win_pct": 0.6122448979591837,
+      "wins": 30,
+      "losses": 19,
+      "ties": 0,
+      "elo_rating": 1586,
+      "opponents_faced": 49
+    },
+    "Dallas Cowboys": {
+      "combined_sos": 0.499,
+      "win_pct_sos": 0.491,
+      "elo_sos": 0.512,
+      "team_win_pct": 0.5,
+      "wins": 23,
+      "losses": 23,
+      "ties": 1,
+      "elo_rating": 1456,
+      "opponents_faced": 47
+    },
+    "Pittsburgh Steelers": {
+      "combined_sos": 0.491,
+      "win_pct_sos": 0.492,
+      "elo_sos": 0.49,
+      "team_win_pct": 0.5869565217391305,
+      "wins": 27,
+      "losses": 19,
+      "ties": 0,
+      "elo_rating": 1547,
+      "opponents_faced": 46
+    },
+    "Cincinnati Bengals": {
+      "combined_sos": 0.53,
+      "win_pct_sos": 0.52,
+      "elo_sos": 0.546,
+      "team_win_pct": 0.5106382978723404,
+      "wins": 24,
+      "losses": 23,
+      "ties": 0,
+      "elo_rating": 1486,
+      "opponents_faced": 47
+    },
+    "Washington Commanders": {
+      "combined_sos": 0.485,
+      "win_pct_sos": 0.487,
+      "elo_sos": 0.481,
+      "team_win_pct": 0.4583333333333333,
+      "wins": 22,
+      "losses": 26,
+      "ties": 0,
+      "elo_rating": 1490,
+      "opponents_faced": 48
+    },
+    "Arizona Cardinals": {
+      "combined_sos": 0.52,
+      "win_pct_sos": 0.513,
+      "elo_sos": 0.531,
+      "team_win_pct": 0.3409090909090909,
+      "wins": 15,
+      "losses": 29,
+      "ties": 0,
+      "elo_rating": 1414,
+      "opponents_faced": 44
+    },
+    "Detroit Lions": {
+      "combined_sos": 0.535,
+      "win_pct_sos": 0.517,
+      "elo_sos": 0.561,
+      "team_win_pct": 0.75,
+      "wins": 36,
+      "losses": 12,
+      "ties": 0,
+      "elo_rating": 1670,
+      "opponents_faced": 48
+    },
+    "Cleveland Browns": {
+      "combined_sos": 0.523,
+      "win_pct_sos": 0.519,
+      "elo_sos": 0.53,
+      "team_win_pct": 0.37777777777777777,
+      "wins": 17,
+      "losses": 28,
+      "ties": 0,
+      "elo_rating": 1391,
+      "opponents_faced": 45
+    },
+    "Buffalo Bills": {
+      "combined_sos": 0.482,
+      "win_pct_sos": 0.486,
+      "elo_sos": 0.477,
+      "team_win_pct": 0.7,
+      "wins": 35,
+      "losses": 15,
+      "ties": 0,
+      "elo_rating": 1658,
+      "opponents_faced": 50
+    }
+  }
+}
