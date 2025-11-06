@@ -389,11 +389,11 @@ def main():
             st.metric("Predicted Winner", model_winner)
             
             if home_win_prob > 0.5:
-                st.metric("Projected Spread", f"{home_team} -{abs(model_spread)}")
+                st.metric("Projected Spread", f"{home_team} -{abs(model_spread):.1f}")
             else:
-                st.metric("Projected Spread", f"{away_team} +{model_spread}")
+                st.metric("Projected Spread", f"{away_team} +{abs(model_spread):.1f}")
             
-            st.metric("Projected Total", f"{model_total}")
+            st.metric("Projected Total", f"{model_total:.1f}")
             
             if home_score and away_score:
                 st.metric("Projected Score", f"{home_team} {home_score}-{away_score} {away_team}")
@@ -402,18 +402,33 @@ def main():
             st.markdown("**🏆 Final Picks**")
             
             if game_odds is not None and game_odds['spread'] is not None:
-                # Against Spread Analysis
-                vegas_spread_abs = abs(game_odds['spread'])
-                model_spread_abs = abs(model_spread)
+                # FIXED: Against Spread Analysis
+                vegas_spread = game_odds['spread']
                 
-                if model_spread_abs < vegas_spread_abs:
-                    st.success(f"**ATS Pick:** {model_winner}")
-                    st.write(f"Model thinks {model_winner} wins by less than Vegas expects")
-                else:
-                    st.success(f"**ATS Pick:** {model_loser}")
-                    st.write(f"Model thinks {model_loser} covers the spread")
+                # Determine which team is favored by Vegas
+                if vegas_spread < 0:  # Home team is favorite
+                    favorite = home_team
+                    underdog = away_team
+                    if model_spread <= vegas_spread:  # Model thinks favorite wins by MORE than Vegas expects
+                        ats_pick = favorite
+                        reasoning = f"Model thinks {favorite} wins by more than Vegas expects"
+                    else:  # Model thinks favorite wins by LESS than Vegas expects
+                        ats_pick = underdog
+                        reasoning = f"Model thinks {underdog} covers the spread"
+                else:  # Away team is favorite
+                    favorite = away_team
+                    underdog = home_team
+                    if model_spread >= vegas_spread:  # Model thinks favorite wins by MORE than Vegas expects
+                        ats_pick = favorite
+                        reasoning = f"Model thinks {favorite} wins by more than Vegas expects"
+                    else:  # Model thinks favorite wins by LESS than Vegas expects
+                        ats_pick = underdog
+                        reasoning = f"Model thinks {underdog} covers the spread"
                 
-                # Over/Under Analysis
+                st.success(f"**ATS Pick:** {ats_pick}")
+                st.write(reasoning)
+                
+                # Over/Under Analysis (this was correct)
                 if game_odds['total'] is not None:
                     if model_total > game_odds['total']:
                         st.success(f"**Total Pick:** OVER {game_odds['total']}")
