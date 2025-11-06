@@ -4,8 +4,10 @@ import pandas as pd
 import numpy as np
 import json
 import pickle
+import requests
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.model_selection import train_test_split
+from datetime import datetime
 
 # Set page config
 st.set_page_config(
@@ -14,12 +16,216 @@ st.set_page_config(
     layout="wide"
 )
 
+class WeatherAPI:
+    def __init__(self):
+        self.stadiums = None
+        self.team_stadiums = None
+        self.load_stadiums()
+    
+    def load_stadiums(self):
+        """Load stadium data"""
+        try:
+            with open('nfl_stadiums.json', 'r') as f:
+                data = json.load(f)
+            self.stadiums = data['stadiums']
+            self.team_stadiums = data['team_stadiums']
+            return True
+        except Exception as e:
+            st.warning(f"⚠️ Could not load stadium data: {e}")
+            self.stadiums = {}
+            self.team_stadiums = {}
+            return False
+    
+    def get_stadium_coordinates(self):
+        """Coordinates for all NFL stadiums"""
+        return {
+            'Allegiant Stadium': (36.0908, -115.1835),
+            'Arrowhead Stadium': (39.0489, -94.4839),
+            'AT&T Stadium': (32.7473, -97.0945),
+            'Bank of America Stadium': (35.2258, -80.8528),
+            'Caesars Superdome': (29.9511, -90.0811),
+            'Cleveland Browns Stadium': (41.5061, -81.6995),
+            'Empower Field at Mile High': (39.7439, -105.0200),
+            'FedExField': (38.9076, -76.8645),
+            'Ford Field': (42.3400, -83.0456),
+            'GEHA Field at Arrowhead Stadium': (39.0489, -94.4839),
+            'Gillette Stadium': (42.0909, -71.2643),
+            'Hard Rock Stadium': (25.9580, -80.2389),
+            'Highmark Stadium': (42.7738, -78.7870),
+            'Lambeau Field': (44.5013, -88.0622),
+            'Levi\'s Stadium': (37.4030, -121.9700),
+            'Lucas Oil Stadium': (39.7601, -86.1639),
+            'Lumen Field': (47.5952, -122.3316),
+            'M&T Bank Stadium': (39.2781, -76.6227),
+            'MetLife Stadium': (40.8135, -74.0745),
+            'Lincoln Financial Field': (39.9008, -75.1675),
+            'Nissan Stadium': (36.1665, -86.7713),
+            'NRG Stadium': (29.6847, -95.4108),
+            'Paycor Stadium': (39.0955, -84.5160),
+            'Raymond James Stadium': (27.9759, -82.5033),
+            'SoFi Stadium': (33.9535, -118.3389),
+            'Soldier Field': (41.8623, -87.6167),
+            'State Farm Stadium': (33.5276, -112.2626),
+            'TIAA Bank Field': (30.3239, -81.6373),
+            'U.S. Bank Stadium': (44.9732, -93.2580)
+        }
+    
+    def get_weather_for_stadium(self, stadium_name, game_date=None):
+        """Get weather for a specific stadium using NWS API"""
+        if stadium_name not in self.stadiums:
+            return self.get_mock_weather(stadium_name, game_date)
+        
+        coordinates = self.get_stadium_coordinates()
+        if stadium_name in coordinates:
+            lat, lon = coordinates[stadium_name]
+            weather = self.get_weather_nws(lat, lon)
+            if weather['success']:
+                return weather
+        
+        # Fallback to mock data
+        return self.get_mock_weather(stadium_name, game_date)
+    
+    def get_weather_nws(self, lat, lon):
+        """National Weather Service API (free, no key needed)"""
+        try:
+            points_url = f"https://api.weather.gov/points/{lat},{lon}"
+            response = requests.get(points_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=10)
+            
+            if response.status_code == 200:
+                points_data = response.json()
+                forecast_url = points_data['properties']['forecast']
+                
+                forecast_response = requests.get(forecast_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=10)
+                forecast_data = forecast_response.json()
+                
+                current_weather = forecast_data['properties']['periods'][0]
+                
+                # Extract wind speed number from string like "10 mph"
+                wind_speed_str = current_weather['windSpeed'].split()[0]
+                wind_speed = float(wind_speed_str) if wind_speed_str.replace('.', '').isdigit() else 10
+                
+                return {
+                    'temperature': current_weather['temperature'],
+                    'wind_speed': wind_speed,
+                    'conditions': current_weather['shortForecast'],
+                    'is_raining': any(word in current_weather['shortForecast'].lower() for word in ['rain', 'shower', 'storm', 'drizzle']),
+                    'service': 'nws',
+                    'success': True
+                }
+        except Exception as e:
+            st.warning(f"⚠️ NWS API failed: {e}")
+        
+        return {'success': False}
+    
+    def get_mock_weather(self, stadium_name, game_date=None):
+        """Fallback mock weather data"""
+        stadium = self.stadiums.get(stadium_name, {})
+        city = stadium.get('city', 'Unknown')
+        
+        month = datetime.now().month if not game_date else datetime.strptime(game_date, '%Y-%m-%d').month
+        
+        # Simple mock based on city and month
+        if city in ['Green Bay', 'Buffalo', 'Chicago', 'Cleveland']:
+            if month in [12, 1, 2]:
+                return {'temperature': 25, 'wind_speed': 15, 'is_raining': False, 'service': 'mock', 'success': True}
+            elif month in [11, 3]:
+                return {'temperature': 45, 'wind_speed': 12, 'is_raining': True, 'service': 'mock', 'success': True}
+        
+        return {'temperature': 65, 'wind_speed': 8, 'is_raining': False, 'service': 'mock', 'success': True}
+
+class WeatherPredictor:
+    def __init__(self):
+        self.weather_analysis = None
+        self.weather_api = WeatherAPI()
+        
+    def load_data(self):
+        """Load weather analysis data"""
+        try:
+            with open('nfl_weather_analysis.json', 'r') as f:
+                self.weather_analysis = json.load(f)
+            return True
+        except Exception as e:
+            st.warning(f"⚠️ Could not load weather analysis: {e}")
+            return False
+    
+    def get_stadium_weather_impact(self, stadium_name, temperature, wind_speed, is_raining=False):
+        """Calculate weather impact for a specific stadium"""
+        if stadium_name not in self.weather_api.stadiums:
+            return 0, 0  # No adjustment
+        
+        stadium = self.weather_api.stadiums[stadium_name]
+        roof_type = stadium['roof_type']
+        
+        # If domed stadium, weather has minimal impact
+        if roof_type == 'domed':
+            return 0, 0
+        
+        # If retractable roof and bad weather, likely closed
+        if roof_type == 'retractable' and (is_raining or temperature < 40 or wind_speed > 20):
+            return 0, 0
+        
+        # Calculate point adjustment based on our historical analysis
+        point_adjustment = 0
+        
+        # Temperature impact
+        if temperature <= 32:
+            # Freezing weather reduces scoring
+            freezing_avg = self.weather_analysis['key_insights']['avg_points_freezing_temp']
+            moderate_avg = self.weather_analysis['key_insights']['avg_points_moderate_temp']
+            point_adjustment -= (moderate_avg - freezing_avg) / 2
+        elif temperature <= 45:
+            # Cold weather slight reduction
+            point_adjustment -= 1.0
+        
+        # Wind impact
+        if wind_speed > 20:
+            windy_avg = self.weather_analysis['key_insights']['avg_points_windy']
+            calm_avg = self.weather_analysis['key_insights']['avg_points_calm_wind']
+            point_adjustment -= (calm_avg - windy_avg) / 2
+        elif wind_speed > 15:
+            point_adjustment -= 0.5
+        
+        # Rain impact
+        if is_raining:
+            point_adjustment -= 2.0
+        
+        return point_adjustment, 0  # spread_adjustment
+    
+    def adjust_prediction_for_weather(self, home_team, away_team, projected_home_score, projected_away_score, game_date):
+        """Adjust scores based on weather conditions"""
+        # Get home stadium
+        if home_team not in self.weather_api.team_stadiums:
+            return projected_home_score, projected_away_score
+        
+        stadium_name = self.weather_api.team_stadiums[home_team]
+        
+        # Get weather data
+        weather = self.weather_api.get_weather_for_stadium(stadium_name, game_date)
+        
+        if not weather['success']:
+            return projected_home_score, projected_away_score
+        
+        # Get weather impact
+        point_adj, spread_adj = self.get_stadium_weather_impact(
+            stadium_name, 
+            weather['temperature'],
+            weather['wind_speed'],
+            weather['is_raining']
+        )
+        
+        # Apply adjustments
+        adjusted_home_score = max(0, projected_home_score + point_adj)
+        adjusted_away_score = max(0, projected_away_score + point_adj)
+        
+        return adjusted_home_score, adjusted_away_score, weather
+
 class NFLPredictor:
     def __init__(self):
         self.model = None
         self.schedule = None
         self.odds_data = None
         self.team_stats = {}
+        self.weather_predictor = WeatherPredictor()
         self.team_mapping = {
             'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
             'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
@@ -39,7 +245,6 @@ class NFLPredictor:
         try:
             with open('nfl_strength_of_schedule.json', 'r') as f:
                 sos_data = json.load(f)
-            st.success(f"✅ Loaded SOS data for {len(sos_data['sos_rankings'])} teams")
             return sos_data['sos_rankings']
         except Exception as e:
             st.warning(f"⚠️ SOS data not available: {e}")
@@ -176,6 +381,12 @@ class NFLPredictor:
             # Load SOS data
             sos_data = self.load_sos_data()
             
+            # NEW: Load weather integration
+            if not self.weather_predictor.load_data():
+                st.warning("⚠️ Weather data not available - using base predictions")
+            else:
+                st.success("✅ Weather integration loaded")
+            
             # Create default team stats with SOS
             default_stats = {
                 'KC': [0.75, 28.5, 19.2], 'BUF': [0.65, 26.8, 21.1], 'SF': [0.80, 30.1, 18.5],
@@ -293,28 +504,48 @@ class NFLPredictor:
             st.error(f"Prediction error: {e}")
             return None
     
-    def predict_game_score(self, home_team, away_team, home_win_prob):
-        """Predict the actual score of the game"""
+    def predict_game_score(self, home_team, away_team, home_win_prob, game_date):
+        """Predict the actual score of the game with weather adjustment"""
         if home_team not in self.team_stats or away_team not in self.team_stats:
-            return None, None
+            return None, None, None
             
         home_offense = self.team_stats[home_team][1]
         away_offense = self.team_stats[away_team][1]
         home_defense = self.team_stats[home_team][2]
         away_defense = self.team_stats[away_team][2]
         
-        # Adjust for SOS if available (use SOS for score prediction but not for win probability)
+        # Adjust for SOS if available
         home_sos = self.team_stats[home_team][3] if len(self.team_stats[home_team]) > 3 else 0.5
         away_sos = self.team_stats[away_team][3] if len(self.team_stats[away_team]) > 3 else 0.5
         
-        # Better score prediction considering both offense, defense, and SOS
+        # Base score prediction
         home_score = (home_offense + away_defense) / 2 + (home_win_prob - 0.5) * 7 + (home_sos - 0.5) * 2
         away_score = (away_offense + home_defense) / 2 - (home_win_prob - 0.5) * 7 + (away_sos - 0.5) * 2
         
         home_score = max(10, round(home_score))
         away_score = max(10, round(away_score))
         
-        return home_score, away_score
+        # NEW: Apply weather adjustment
+        weather_data = None
+        if hasattr(self, 'weather_predictor') and self.weather_predictor.weather_analysis:
+            home_full = None
+            for full, abbr in self.team_mapping.items():
+                if abbr == home_team:
+                    home_full = full
+                    break
+            
+            away_full = None
+            for full, abbr in self.team_mapping.items():
+                if abbr == away_team:
+                    away_full = full
+                    break
+            
+            if home_full and away_full:
+                home_score, away_score, weather_data = self.weather_predictor.adjust_prediction_for_weather(
+                    home_full, away_full, home_score, away_score, game_date
+                )
+    
+        return home_score, away_score, weather_data
     
     def convert_prob_to_spread(self, home_win_prob):
         """Convert win probability to point spread"""
@@ -389,7 +620,9 @@ def main():
         # Model projections
         model_spread = predictor.convert_prob_to_spread(home_win_prob)
         model_total = predictor.predict_total_points(home_team, away_team)
-        home_score, away_score = predictor.predict_game_score(home_team, away_team, home_win_prob)
+        
+        # NEW: Get scores with weather adjustment
+        home_score, away_score, weather_data = predictor.predict_game_score(home_team, away_team, home_win_prob, game_date)
         
         # Determine model predictions
         model_winner = home_team if home_win_prob > 0.5 else away_team
@@ -401,6 +634,15 @@ def main():
         with col1:
             st.subheader(f"{away_full} @ {home_full}")
             st.caption(f"Date: {game_date} | {away_team} @ {home_team}")
+            
+            # NEW: Show weather info
+            if weather_data:
+                stadium_name = predictor.weather_predictor.weather_api.team_stadiums.get(home_full, "Unknown")
+                st.markdown(f"**🌤️  Weather at {stadium_name}:**")
+                st.write(f"Temperature: {weather_data['temperature']}°F")
+                st.write(f"Wind: {weather_data['wind_speed']} mph")
+                st.write(f"Conditions: {weather_data['conditions']}")
+                st.write(f"Source: {weather_data['service'].upper()}")
             
             # Vegas Odds
             st.markdown("**🎰 Vegas Odds**")
