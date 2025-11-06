@@ -89,13 +89,13 @@ class WeatherAPI:
         """National Weather Service API (free, no key needed)"""
         try:
             points_url = f"https://api.weather.gov/points/{lat},{lon}"
-            response = requests.get(points_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=10)
+            response = requests.get(points_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=5)
             
             if response.status_code == 200:
                 points_data = response.json()
                 forecast_url = points_data['properties']['forecast']
                 
-                forecast_response = requests.get(forecast_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=10)
+                forecast_response = requests.get(forecast_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=5)
                 forecast_data = forecast_response.json()
                 
                 current_weather = forecast_data['properties']['periods'][0]
@@ -113,9 +113,10 @@ class WeatherAPI:
                     'success': True
                 }
         except Exception as e:
-            st.warning(f"⚠️ NWS API failed: {e}")
+            # Silent fail - don't show warning for every game
+            pass
         
-        return {'success': False}
+        return {'success': False, 'temperature': 65, 'wind_speed': 8, 'conditions': 'Unknown', 'is_raining': False, 'service': 'mock'}
     
     def get_mock_weather(self, stadium_name, game_date=None):
         """Fallback mock weather data"""
@@ -195,15 +196,15 @@ class WeatherPredictor:
         """Adjust scores based on weather conditions"""
         # Get home stadium
         if home_team not in self.weather_api.team_stadiums:
-            return projected_home_score, projected_away_score
+            return projected_home_score, projected_away_score, None
         
         stadium_name = self.weather_api.team_stadiums[home_team]
         
         # Get weather data
         weather = self.weather_api.get_weather_for_stadium(stadium_name, game_date)
         
-        if not weather['success']:
-            return projected_home_score, projected_away_score
+        if not weather.get('success', False):
+            return projected_home_score, projected_away_score, weather
         
         # Get weather impact
         point_adj, spread_adj = self.get_stadium_weather_impact(
@@ -635,14 +636,14 @@ def main():
             st.subheader(f"{away_full} @ {home_full}")
             st.caption(f"Date: {game_date} | {away_team} @ {home_team}")
             
-            # NEW: Show weather info
-            if weather_data:
+            # FIXED: Safe weather display
+            if weather_data and weather_data.get('success'):
                 stadium_name = predictor.weather_predictor.weather_api.team_stadiums.get(home_full, "Unknown")
                 st.markdown(f"**🌤️  Weather at {stadium_name}:**")
-                st.write(f"Temperature: {weather_data['temperature']}°F")
-                st.write(f"Wind: {weather_data['wind_speed']} mph")
-                st.write(f"Conditions: {weather_data['conditions']}")
-                st.write(f"Source: {weather_data['service'].upper()}")
+                st.write(f"Temperature: {weather_data.get('temperature', 'N/A')}°F")
+                st.write(f"Wind: {weather_data.get('wind_speed', 'N/A')} mph")
+                st.write(f"Conditions: {weather_data.get('conditions', 'Unknown')}")
+                st.write(f"Source: {weather_data.get('service', 'Unknown').upper()}")
             
             # Vegas Odds
             st.markdown("**🎰 Vegas Odds**")
