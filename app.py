@@ -53,33 +53,30 @@ class NFLPredictor:
             # Load schedule
             with open('week_10_schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-                # Extract the Week 10 games
                 self.schedule = pd.DataFrame(schedule_data['Week 10'])
                 st.info(f"Loaded schedule with {len(self.schedule)} games")
             
-            # Load odds
+            # Load odds - show the structure to debug
             with open('week_10_odds.json', 'r') as f:
                 odds_data = json.load(f)
                 self.odds = pd.DataFrame(odds_data)
                 st.info(f"Loaded odds for {len(self.odds)} games")
+                st.info(f"Odds columns: {list(self.odds.columns)}")
+                if len(self.odds) > 0:
+                    st.info(f"First odds row: {self.odds.iloc[0].to_dict()}")
             
-            # Load team stats from 2025 data
+            # Load team stats
             with open('2025_NFL_OFFENSE.json', 'r') as f:
                 offense_data = json.load(f)
                 offense_df = pd.DataFrame(offense_data)
                 
-                st.info(f"Loaded team stats with {len(offense_df)} teams")
-                
-                # Map full team names to abbreviations for stats
                 for _, team in offense_df.iterrows():
-                    team_name = team['Team']  # Full team name from your data
+                    team_name = team['Team']
                     team_abbr = self.get_team_abbreviation(team_name)
                     
-                    # Use available stats - adjust based on what's in your data
                     points_per_game = team.get('POINTS PER GAME', 23.0)
-                    # For win percentage and defense, we'll use defaults for now
-                    win_pct = 0.5  # You'll need to calculate this from historical data
-                    points_against = 23.0  # You'll need to add defensive stats
+                    win_pct = 0.5  # Default for now
+                    points_against = 23.0  # Default for now
                     
                     self.team_stats[team_abbr] = [win_pct, points_per_game, points_against]
                 
@@ -90,69 +87,79 @@ class NFLPredictor:
             st.error(f"Error loading data: {e}")
             return False
     
-    def calculate_implied_probability(self, american_odds):
-        """Convert American odds to implied probability"""
-        try:
-            if american_odds > 0:
-                return 100 / (american_odds + 100)
-            else:
-                return abs(american_odds) / (abs(american_odds) + 100)
-        except:
-            return 0.5
-    
-    def predict_game(self, home_team, away_team):
-        """Predict game outcome using the trained model"""
-        if home_team not in self.team_stats or away_team not in self.team_stats:
-            st.warning(f"Missing stats for {home_team} or {away_team}")
+    def find_matching_odds(self, home_team, away_team, home_full, away_full):
+        """Find matching odds for a game"""
+        if self.odds is None or len(self.odds) == 0:
             return None
             
-        home_stats = self.team_stats[home_team]
-        away_stats = self.team_stats[away_team]
+        # Try different matching strategies
+        for _, odds_row in self.odds.iterrows():
+            # Check all possible column combinations
+            odds_home = odds_row.get('home_team', '')
+            odds_away = odds_row.get('away_team', '')
+            odds_home_abbr = odds_row.get('home_abbr', '')
+            odds_away_abbr = odds_row.get('away_abbr', '')
+            
+            # Match by abbreviation
+            if (odds_home_abbr == home_team and odds_away_abbr == away_team):
+                return odds_row
+            # Match by full name
+            if (odds_home in home_full or home_full in odds_home) and (odds_away in away_full or away_full in odds_away):
+                return odds_row
+            # Match by abbreviation in full name fields
+            if (home_team in odds_home or away_team in odds_away):
+                return odds_row
+                
+        return None
+    
+    def predict_game_score(self, home_team, away_team, home_win_prob):
+        """Predict the actual score of the game"""
+        if home_team not in self.team_stats or away_team not in self.team_stats:
+            return None, None
+            
+        home_offense = self.team_stats[home_team][1]
+        away_offense = self.team_stats[away_team][1]
+        home_defense = self.team_stats[home_team][2]
+        away_defense = self.team_stats[away_team][2]
         
-        # Create features array (same format as training)
-        features = np.array([[
-            home_stats[0], home_stats[1], home_stats[2],  # home_win_pct, offense, defense
-            away_stats[0], away_stats[1], away_stats[2],  # away_win_pct, offense, defense
-            1  # home_field advantage
-        ]])
+        # Base scores from team averages
+        home_base = (home_offense + away_defense) / 2
+        away_base = (away_offense + home_defense) / 2
         
-        # Get prediction
-        try:
-            probabilities = self.model.predict_proba(features)[0]
-            home_win_prob = probabilities[1]
-            return home_win_prob
-        except Exception as e:
-            st.error(f"Prediction error: {e}")
-            return None
+        # Adjust based on win probability
+        prob_adjustment = (home_win_prob - 0.5) * 7  # Adjust by up to 7 points
+        
+        home_score = max(0, round(home_base + prob_adjustment))
+        away_score = max(0, round(away_base - prob_adjustment))
+        
+        return home_score, away_score
     
     def convert_prob_to_spread(self, home_win_prob):
         """Convert win probability to point spread"""
         if home_win_prob is None:
             return 0
             
-        # Using common conversion: prob -> spread
         if home_win_prob >= 0.5:
-            spread = -((home_win_prob - 0.5) * 14)  # Convert to negative spread for favorite
+            spread = -((home_win_prob - 0.5) * 14)
         else:
-            spread = ((0.5 - home_win_prob) * 14)   # Positive spread for underdog
+            spread = ((0.5 - home_win_prob) * 14)
         
-        return round(spread * 2) / 2  # Round to nearest 0.5
+        return round(spread * 2) / 2
     
     def predict_total_points(self, home_team, away_team):
-        """Predict total points based on team offensive/defensive stats"""
+        """Predict total points based on team stats"""
         if home_team not in self.team_stats or away_team not in self.team_stats:
             return 45.0
             
         home_offense = self.team_stats[home_team][1]
         away_offense = self.team_stats[away_team][1]
         
-        # Simple average of both teams' offensive capabilities
-        total = (home_offense + away_offense) * 1.1  # Adjust for typical game totals
-        return round(total * 2) / 2  # Round to nearest 0.5
+        total = (home_offense + away_offense) * 1.1
+        return round(total * 2) / 2
 
 def main():
     st.title("🏈 NFL Week 10 Predictions & Betting Analysis")
-    st.markdown("### Model Projections vs. Vegas Odds")
+    st.markdown("### Complete Game Analysis: Vegas vs Model Projections")
     
     # Initialize predictor
     predictor = NFLPredictor()
@@ -179,47 +186,44 @@ def main():
         home_team = predictor.get_team_abbreviation(home_full)
         away_team = predictor.get_team_abbreviation(away_full)
         
-        # Find matching odds - we need to handle this carefully since odds might use different naming
-        game_odds = None
-        if predictor.odds is not None and len(predictor.odds) > 0:
-            # Try to find matching game by team names
-            for _, odds_row in predictor.odds.iterrows():
-                # Check if this odds row matches our game
-                odds_home = odds_row.get('home_team', '')
-                odds_away = odds_row.get('away_team', '')
-                
-                # Simple matching - you might need to adjust this based on your odds file structure
-                if (home_team in odds_home or odds_home in home_full or 
-                    away_team in odds_away or odds_away in away_full):
-                    game_odds = odds_row
-                    break
+        # Find matching odds
+        game_odds = predictor.find_matching_odds(home_team, away_team, home_full, away_full)
         
         # Make prediction
         home_win_prob = predictor.predict_game(home_team, away_team)
         if home_win_prob is None:
             continue
         
-        # Calculate model projections
+        # Calculate all projections
         model_spread = predictor.convert_prob_to_spread(home_win_prob)
         model_total = predictor.predict_total_points(home_team, away_team)
+        home_score, away_score = predictor.predict_game_score(home_team, away_team, home_win_prob)
+        
+        # Determine favorites
+        if home_win_prob > 0.5:
+            model_winner = home_team
+            model_loser = away_team
+            model_fav_spread = abs(model_spread)
+        else:
+            model_winner = away_team
+            model_loser = home_team
+            model_fav_spread = model_spread
         
         # Create columns for display
-        col1, col2, col3 = st.columns([2, 1, 1])
+        col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 1])
         
         with col1:
             st.subheader(f"{away_full} @ {home_full}")
             st.caption(f"Date: {game_date}")
-            st.caption(f"Teams: {away_team} @ {home_team}")
             
-            # Vegas Odds
-            st.markdown("**Vegas Odds:**")
+            # Vegas Odds Section
+            st.markdown("**🎰 Vegas Odds**")
             if game_odds is not None:
                 vegas_spread = game_odds.get('spread', 0)
                 vegas_total = game_odds.get('over_under', 45.0)
                 home_ml = game_odds.get('home_moneyline', 0)
                 away_ml = game_odds.get('away_moneyline', 0)
                 
-                # Determine favorite based on spread
                 if vegas_spread < 0:
                     vegas_favorite = home_team
                     vegas_underdog = away_team
@@ -234,81 +238,104 @@ def main():
                 st.write(f"Total: **{vegas_total}**")
                 st.write(f"Moneyline: {home_team} {home_ml} | {away_team} {away_ml}")
             else:
-                st.write("Vegas odds: Not available for this game")
+                st.write("Vegas odds: Not available")
                 vegas_spread = 0
                 vegas_total = 45.0
         
         with col2:
-            st.markdown("**Model Projections:**")
-            st.metric("Home Win Probability", f"{home_win_prob:.1%}")
+            st.markdown("**🤖 Model Projections**")
+            st.metric("Win Probability", f"{home_win_prob:.1%}")
             
-            # Model's favorite
             if home_win_prob > 0.5:
-                model_favorite = home_team
-                model_underdog = away_team
-                model_fav_spread = abs(model_spread)
-                st.metric("Projected Spread", f"{model_favorite} -{model_fav_spread}")
+                st.metric("Projected Spread", f"{home_team} -{abs(model_spread)}")
             else:
-                model_favorite = away_team
-                model_underdog = home_team
-                model_fav_spread = model_spread
-                st.metric("Projected Spread", f"{model_underdog} +{model_fav_spread}")
+                st.metric("Projected Spread", f"{away_team} +{model_spread}")
             
             st.metric("Projected Total", f"{model_total}")
+            
+            if home_score is not None and away_score is not None:
+                st.metric("Projected Score", f"{home_team} {home_score}-{away_score} {away_team}")
         
         with col3:
-            st.markdown("**Betting Recommendations:**")
+            st.markdown("**🏆 Final Predictions**")
             
+            # Winner prediction
+            st.write(f"**Winner:** {model_winner}")
+            
+            # Against Spread prediction
             if game_odds is not None:
-                # Spread Analysis
                 spread_diff = abs(model_fav_spread - abs(vegas_spread))
                 if spread_diff > 1.0:
                     if model_fav_spread < abs(vegas_spread):
-                        st.success(f"📈 BET: {model_favorite} (Model likes favorite more)")
+                        st.success(f"**ATS:** {model_winner} -{model_fav_spread}")
                     else:
-                        st.success(f"📈 BET: {model_underdog} (Model thinks underdog covers)")
+                        st.success(f"**ATS:** {model_loser} +{abs(vegas_spread)}")
                 else:
-                    st.info("⚖️ Spread: No strong opinion")
+                    st.info("**ATS:** No strong play")
                 
-                # Total Analysis
+                # Over/Under prediction
                 total_diff = abs(model_total - vegas_total)
                 if total_diff > 2.0:
                     if model_total > vegas_total:
-                        st.success(f"📈 BET: OVER {vegas_total}")
+                        st.success(f"**Total:** OVER {vegas_total}")
                     else:
-                        st.success(f"📈 BET: UNDER {vegas_total}")
+                        st.success(f"**Total:** UNDER {vegas_total}")
                 else:
-                    st.info("⚖️ Total: No strong opinion")
+                    st.info("**Total:** No strong play")
             else:
-                st.info("Odds not available for analysis")
+                st.info("Odds needed for ATS/Total predictions")
+        
+        with col4:
+            st.markdown("**💡 Betting Tips**")
+            
+            if game_odds is not None:
+                tips = []
+                
+                # Spread analysis
+                spread_diff = abs(model_fav_spread - abs(vegas_spread))
+                if spread_diff > 2.0:
+                    if model_fav_spread < abs(vegas_spread):
+                        tips.append("📈 Strong bet on favorite")
+                    else:
+                        tips.append("📈 Strong bet on underdog")
+                elif spread_diff > 1.0:
+                    tips.append("📊 Lean on spread")
+                
+                # Total analysis
+                total_diff = abs(model_total - vegas_total)
+                if total_diff > 3.0:
+                    if model_total > vegas_total:
+                        tips.append("🔥 Strong OVER play")
+                    else:
+                        tips.append("🔥 Strong UNDER play")
+                elif total_diff > 2.0:
+                    tips.append("📊 Lean on total")
+                
+                # Moneyline value
+                if home_win_prob > 0.7 and home_ml > -200:
+                    tips.append("💰 ML value on home")
+                elif home_win_prob < 0.3 and away_ml > -200:
+                    tips.append("💰 ML value on away")
+                
+                if tips:
+                    for tip in tips:
+                        st.success(tip)
+                else:
+                    st.info("No strong bets")
+            else:
+                st.info("Odds not available")
         
         st.markdown("---")
     
-    # Summary section
-    st.header("📊 Model Summary")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("How to Read This Analysis")
-        st.markdown("""
-        - **Spread Differences**: When model spread differs from Vegas by >1 point
-        - **Total Differences**: When model total differs from Vegas by >2 points  
-        - **Moneyline Value**: When model probability suggests better odds than offered
-        - **Green Recommendations**: Strong betting opportunities
-        - **Blue Info**: Close calls, no strong edge
-        """)
-    
-    with col2:
-        st.subheader("About the Model")
-        st.markdown("""
-        - **Trained on**: Team performance statistics (win %, offense, defense)
-        - **Predicts**: Game outcomes based on team strength
-        - **Comparison**: Finds discrepancies between model projections and betting markets
-        - **Goal**: Identify value betting opportunities
-        """)
-    
-    st.info("⚠️ Remember: Betting involves risk. These are projections, not guarantees.")
+    # Footer
+    st.markdown("---")
+    st.info("""
+    **How to use this analysis:**
+    - **Vegas Odds**: What the sportsbooks are offering
+    - **Model Projections**: What our AI model predicts based on team performance
+    - **Final Predictions**: Our recommended bets when model disagrees with Vegas
+    - **Betting Tips**: Quick summary of the best opportunities
+    """)
 
 if __name__ == "__main__":
     main()
