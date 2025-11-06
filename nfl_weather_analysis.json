@@ -1,0 +1,179 @@
+{
+  "metadata": {
+    "total_games_analyzed": 12685,
+    "analysis_date": "2025-11-06",
+    "data_source": "spreadspoke_scores.json"
+  },
+  "temperature_impact": {
+    "Freezing (\u226432\u00b0F)": {
+      "avg_points": 40.559902200489,
+      "games_count": 818,
+      "temp_range": "0-32\u00b0F"
+    },
+    "Cold (33-45\u00b0F)": {
+      "avg_points": 41.20970440602343,
+      "games_count": 1793,
+      "temp_range": "33-45\u00b0F"
+    },
+    "Cool (46-65\u00b0F)": {
+      "avg_points": 41.5215546124637,
+      "games_count": 4477,
+      "temp_range": "46-65\u00b0F"
+    },
+    "Moderate (66-80\u00b0F)": {
+      "avg_points": 43.50910147172734,
+      "games_count": 5164,
+      "temp_range": "66-80\u00b0F"
+    },
+    "Warm (81+\u00b0F)": {
+      "avg_points": 41.733021077283375,
+      "games_count": 427,
+      "temp_range": "81-100\u00b0F"
+    }
+  },
+  "wind_impact": {
+    "Calm (0-10 mph)": {
+      "avg_points": 43.24446202531646,
+      "games_count": 8848,
+      "wind_range": "0-10 mph"
+    },
+    "Breezy (11-20 mph)": {
+      "avg_points": 40.065265486725664,
+      "games_count": 3616,
+      "wind_range": "11-20 mph"
+    },
+    "Windy (21-30 mph)": {
+      "avg_points": 35.89,
+      "games_count": 200,
+      "wind_range": "21-30 mph"
+    },
+    "Very Windy (31+ mph)": {
+      "avg_points": 27.6,
+      "games_count": 5,
+      "wind_range": "31-100 mph"
+    }
+  },
+  "team_cold_weather_performance": {
+    "Minnesota Vikings": {
+      "cold_win_pct": 0.7014925373134329,
+      "cold_avg_points": 22.19402985074627,
+      "cold_games_played": 67
+    },
+    "Detroit Lions": {
+      "cold_win_pct": 0.5652173913043478,
+      "cold_avg_points": 19.565217391304348,
+      "cold_games_played": 23
+    },
+    "Chicago Bears": {
+      "cold_win_pct": 0.5704225352112676,
+      "cold_avg_points": 20.239436619718308,
+      "cold_games_played": 142
+    },
+    "Green Bay Packers": {
+      "cold_win_pct": 0.6830601092896175,
+      "cold_avg_points": 24.065573770491802,
+      "cold_games_played": 183
+    },
+    "Pittsburgh Steelers": {
+      "cold_win_pct": 0.7571428571428571,
+      "cold_avg_points": 24.392857142857142,
+      "cold_games_played": 140
+    },
+    "Cleveland Browns": {
+      "cold_win_pct": 0.5289256198347108,
+      "cold_avg_points": 19.84297520661157,
+      "cold_games_played": 121
+    },
+    "Washington Redskins": {
+      "cold_win_pct": 0.5,
+      "cold_avg_points": 21.636363636363637,
+      "cold_games_played": 66
+    },
+    "New York Giants": {
+      "cold_win_pct": 0.5,
+      "cold_avg_points": 19.977777777777778,
+      "cold_games_played": 90
+    },
+    "Baltimore Colts": {
+      "cold_win_pct": 0.5161290322580645,
+      "cold_avg_points": 20.451612903225808,
+      "cold_games_played": 31
+    },
+    "Philadelphia Eagles": {
+      "cold_win_pct": 0.5274725274725275,
+      "cold_avg_points": 20.923076923076923,
+      "cold_games_played": 91
+    },
+    "Dallas Cowboys": {
+      "cold_win_pct": 0.7096774193548387,
+      "cold_avg_points": 24.0,
+      "cold_games_played": 31
+    },
+    "St. Louis Cardinals": {
+      "cold_win_pct": 0.42105263157894735,
+      "cold_avg_points": 19.342105263157894,
+      "cold_games_played": 38
+    },
+    "Atlanta Falcons": {
+      "cold_win_pct": 0.5238095238095238,
+      "cold_avg_points": 19.857142857142858,
+      "cold_games_played": 21
+    },
+    "Denver Broncos": {
+      "cold_win_pct": 0.6190476190476191,
+      "cold_avg_points": 23.452380952380953,
+      "cold_games_played": 126
+    },
+    "Kansas City Chiefs": {
+      "cold_win_pct": 0.6470588235294118,
+      "cold_avg_points": 24.294117647058822,
+      "cold_games_played": 119
+    },
+    "Buffalo Bills": {
+      "cold_win_pct": 0.5338345864661654,
+      "cold_avg_points": 20.93984962406015,
+      "cold_games_played": 133
+    },
+    "Cincinnati Bengals": {
+      "cold_win_pct": 0.6190476190476191,
+      "cold_avg_points": 24.571428571428573,
+      "cold_games_played": 105
+    },
+    "New York Jets": {
+      "cold_win_pct": 0.4583333333333333,
+      "cold_avg_points": 19.430555555555557,
+      "cold_games_played": 72
+    },
+    "New England Patriots": {
+      "cold_win_pct": 0.7547169811320755,
+      "cold_avg_points": 25.21698113207547,
+      "cold_games_played": 106
+    },
+    "Carolina Panthers": {
+      "cold_win_pct": 0.6666666666666666,
+      "cold_avg_points": 21.444444444444443,
+      "cold_games_played": 18
+    },
+    "Baltimore Ravens": {
+      "cold_win_pct": 0.717948717948718,
+      "cold_avg_points": 25.17948717948718,
+      "cold_games_played": 39
+    },
+    "Tennessee Titans": {
+      "cold_win_pct": 0.5384615384615384,
+      "cold_avg_points": 24.615384615384617,
+      "cold_games_played": 26
+    },
+    "Seattle Seahawks": {
+      "cold_win_pct": 0.6153846153846154,
+      "cold_avg_points": 26.692307692307693,
+      "cold_games_played": 26
+    }
+  },
+  "key_insights": {
+    "avg_points_moderate_temp": 43.50910147172734,
+    "avg_points_freezing_temp": 40.559902200489,
+    "avg_points_calm_wind": 43.24446202531646,
+    "avg_points_windy": 35.89
+  }
+}
