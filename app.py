@@ -319,11 +319,31 @@ def main():
             # Vegas Odds
             st.markdown("**🎰 Vegas Odds**")
             if game_odds is not None:
-                # Try to extract odds from various field names
-                spread = game_odds.get('spread', game_odds.get('point_spread', 0))
-                total = game_odds.get('over_under', game_odds.get('total', 45.0))
-                home_ml = game_odds.get('home_moneyline', game_odds.get('home_ml', 0))
-                away_ml = game_odds.get('away_moneyline', game_odds.get('away_ml', 0))
+                # Extract spread and total from the odds data
+                spread = 0
+                total = 45.0
+                home_ml = 0
+                away_ml = 0
+                
+                # Look for spread data
+                if game_odds.get('market') == 'spreads':
+                    spread = game_odds.get('point', 0)
+                    # Determine which team the spread applies to
+                    if game_odds.get('label') == home_full:
+                        spread = -abs(spread)  # Home team is favorite
+                    else:
+                        spread = abs(spread)   # Away team is favorite
+                
+                # Look for totals data  
+                if game_odds.get('market') == 'totals':
+                    total = game_odds.get('point', 45.0)
+                
+                # Look for moneylines
+                if game_odds.get('market') == 'h2h':
+                    if game_odds.get('label') == home_full:
+                        home_ml = game_odds.get('price', 0)
+                    else:
+                        away_ml = game_odds.get('price', 0)
                 
                 if spread < 0:
                     st.write(f"Spread: **{home_team} {spread}**")
@@ -383,19 +403,31 @@ def main():
             st.markdown("**💡 Betting Tips**")
             if game_odds is not None and home_score and away_score:
                 tips = []
+                
+                # Strong favorite/underdog
                 if home_win_prob > 0.65:
                     tips.append("💰 Strong on favorite")
                 elif home_win_prob < 0.35:
                     tips.append("💰 Strong on underdog")
                 
-                if abs(model_spread - spread) > 2:
+                # Spread value
+                spread_value = abs(abs(model_spread) - abs(spread))
+                if spread_value > 2:
                     tips.append("📈 Good spread value")
                 
-                if abs(model_total - total) > 3:
+                # Total value
+                total_value = abs(model_total - total)
+                if total_value > 3:
                     tips.append("🔥 Strong total play")
                 
-                for tip in tips if tips else ["⚖️ No strong edge"]:
-                    st.success(tip) if tip != "⚖️ No strong edge" else st.info(tip)
+                # Display tips
+                if tips:
+                    for tip in tips:
+                        st.success(tip)
+                else:
+                    st.info("⚖️ No strong edge")
+            else:
+                st.info("Odds needed for tips")
         
         st.markdown("---")
 
