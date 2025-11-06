@@ -277,10 +277,11 @@ class NFLPredictor:
         home_stats = self.team_stats[home_team]
         away_stats = self.team_stats[away_team]
         
-        # Use all available stats (win_pct, points_for, points_against, sos)
+        # Use only the first 3 stats for each team to match the trained model
+        # [win_pct, points_for, points_against] - no SOS for now to avoid feature mismatch
         features = np.array([[
-            home_stats[0], home_stats[1], home_stats[2], home_stats[3] if len(home_stats) > 3 else 0.5,
-            away_stats[0], away_stats[1], away_stats[2], away_stats[3] if len(away_stats) > 3 else 0.5,
+            home_stats[0], home_stats[1], home_stats[2],
+            away_stats[0], away_stats[1], away_stats[2],
             1  # Home field advantage
         ]])
         
@@ -302,7 +303,7 @@ class NFLPredictor:
         home_defense = self.team_stats[home_team][2]
         away_defense = self.team_stats[away_team][2]
         
-        # Adjust for SOS if available
+        # Adjust for SOS if available (use SOS for score prediction but not for win probability)
         home_sos = self.team_stats[home_team][3] if len(self.team_stats[home_team]) > 3 else 0.5
         away_sos = self.team_stats[away_team][3] if len(self.team_stats[away_team]) > 3 else 0.5
         
