@@ -1,0 +1,187 @@
+{
+  "metadata": {
+    "created_date": "2024-01-01",
+    "source": "NFL Official"
+  },
+  "stadiums": {
+    "Allegiant Stadium": {
+      "city": "Las Vegas",
+      "state": "NV",
+      "roof_type": "domed"
+    },
+    "Arrowhead Stadium": {
+      "city": "Kansas City",
+      "state": "MO",
+      "roof_type": "open"
+    },
+    "AT&T Stadium": {
+      "city": "Arlington",
+      "state": "TX",
+      "roof_type": "retractable"
+    },
+    "Bank of America Stadium": {
+      "city": "Charlotte",
+      "state": "NC",
+      "roof_type": "open"
+    },
+    "Caesars Superdome": {
+      "city": "New Orleans",
+      "state": "LA",
+      "roof_type": "domed"
+    },
+    "Cleveland Browns Stadium": {
+      "city": "Cleveland",
+      "state": "OH",
+      "roof_type": "open"
+    },
+    "Empower Field at Mile High": {
+      "city": "Denver",
+      "state": "CO",
+      "roof_type": "open"
+    },
+    "FedExField": {
+      "city": "Landover",
+      "state": "MD",
+      "roof_type": "open"
+    },
+    "Ford Field": {
+      "city": "Detroit",
+      "state": "MI",
+      "roof_type": "domed"
+    },
+    "GEHA Field at Arrowhead Stadium": {
+      "city": "Kansas City",
+      "state": "MO",
+      "roof_type": "open"
+    },
+    "Gillette Stadium": {
+      "city": "Foxborough",
+      "state": "MA",
+      "roof_type": "open"
+    },
+    "Hard Rock Stadium": {
+      "city": "Miami Gardens",
+      "state": "FL",
+      "roof_type": "open"
+    },
+    "Highmark Stadium": {
+      "city": "Orchard Park",
+      "state": "NY",
+      "roof_type": "open"
+    },
+    "Lambeau Field": {
+      "city": "Green Bay",
+      "state": "WI",
+      "roof_type": "open"
+    },
+    "Levi's Stadium": {
+      "city": "Santa Clara",
+      "state": "CA",
+      "roof_type": "open"
+    },
+    "Lucas Oil Stadium": {
+      "city": "Indianapolis",
+      "state": "IN",
+      "roof_type": "retractable"
+    },
+    "Lumen Field": {
+      "city": "Seattle",
+      "state": "WA",
+      "roof_type": "open"
+    },
+    "M&T Bank Stadium": {
+      "city": "Baltimore",
+      "state": "MD",
+      "roof_type": "open"
+    },
+    "MetLife Stadium": {
+      "city": "East Rutherford",
+      "state": "NJ",
+      "roof_type": "open"
+    },
+    "Lincoln Financial Field": {
+      "city": "Philadelphia",
+      "state": "PA",
+      "roof_type": "open"
+    },
+    "Nissan Stadium": {
+      "city": "Nashville",
+      "state": "TN",
+      "roof_type": "open"
+    },
+    "NRG Stadium": {
+      "city": "Houston",
+      "state": "TX",
+      "roof_type": "retractable"
+    },
+    "Paycor Stadium": {
+      "city": "Cincinnati",
+      "state": "OH",
+      "roof_type": "open"
+    },
+    "Raymond James Stadium": {
+      "city": "Tampa",
+      "state": "FL",
+      "roof_type": "open"
+    },
+    "SoFi Stadium": {
+      "city": "Inglewood",
+      "state": "CA",
+      "roof_type": "domed"
+    },
+    "Soldier Field": {
+      "city": "Chicago",
+      "state": "IL",
+      "roof_type": "open"
+    },
+    "State Farm Stadium": {
+      "city": "Glendale",
+      "state": "AZ",
+      "roof_type": "retractable"
+    },
+    "TIAA Bank Field": {
+      "city": "Jacksonville",
+      "state": "FL",
+      "roof_type": "open"
+    },
+    "U.S. Bank Stadium": {
+      "city": "Minneapolis",
+      "state": "MN",
+      "roof_type": "domed"
+    }
+  },
+  "team_stadiums": {
+    "Arizona Cardinals": "State Farm Stadium",
+    "Atlanta Falcons": "Mercedes-Benz Stadium",
+    "Baltimore Ravens": "M&T Bank Stadium",
+    "Buffalo Bills": "Highmark Stadium",
+    "Carolina Panthers": "Bank of America Stadium",
+    "Chicago Bears": "Soldier Field",
+    "Cincinnati Bengals": "Paycor Stadium",
+    "Cleveland Browns": "Cleveland Browns Stadium",
+    "Dallas Cowboys": "AT&T Stadium",
+    "Denver Broncos": "Empower Field at Mile High",
+    "Detroit Lions": "Ford Field",
+    "Green Bay Packers": "Lambeau Field",
+    "Houston Texans": "NRG Stadium",
+    "Indianapolis Colts": "Lucas Oil Stadium",
+    "Jacksonville Jaguars": "TIAA Bank Field",
+    "Kansas City Chiefs": "GEHA Field at Arrowhead Stadium",
+    "Las Vegas Raiders": "Allegiant Stadium",
+    "Los Angeles Chargers": "SoFi Stadium",
+    "Los Angeles Rams": "SoFi Stadium",
+    "Miami Dolphins": "Hard Rock Stadium",
+    "Minnesota Vikings": "U.S. Bank Stadium",
+    "New England Patriots": "Gillette Stadium",
+    "New Orleans Saints": "Caesars Superdome",
+    "New York Giants": "MetLife Stadium",
+    "New York Jets": "MetLife Stadium",
+    "Philadelphia Eagles": "Lincoln Financial Field",
+    "Pittsburgh Steelers": "Acrisure Stadium",
+    "San Francisco 49ers": "Levi's Stadium",
+    "Seattle Seahawks": "Lumen Field",
+    "Tampa Bay Buccaneers": "Raymond James Stadium",
+    "Tennessee Titans": "Nissan Stadium",
+    "Washington Commanders": "FedExField"
+  }
+}
