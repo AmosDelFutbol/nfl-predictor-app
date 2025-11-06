@@ -6,8 +6,6 @@ import json
 import pickle
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-import tempfile
-import os
 
 # Set page config
 st.set_page_config(
@@ -20,7 +18,7 @@ class NFLPredictor:
     def __init__(self):
         self.model = None
         self.schedule = None
-        self.odds = None
+        self.odds_data = None
         self.team_stats = {}
         
     def train_model(self):
@@ -28,7 +26,6 @@ class NFLPredictor:
         st.info("🔄 Training NFL prediction model...")
         
         try:
-            # Load historical data
             with open('spreadspoke_scores.json', 'r') as f:
                 games = pd.DataFrame(json.load(f))
             
@@ -159,11 +156,15 @@ class NFLPredictor:
                 self.schedule = pd.DataFrame(schedule_data['Week 10'])
                 st.info(f"📅 Loaded schedule with {len(self.schedule)} games")
             
-            # Load odds
+            # Load odds and aggregate by game
             with open('week_10_odds.json', 'r') as f:
                 odds_data = json.load(f)
-                self.odds = pd.DataFrame(odds_data)
-                st.info(f"🎰 Loaded odds for {len(self.odds)} games")
+                self.odds_data = pd.DataFrame(odds_data)
+                st.info(f"🎰 Loaded {len(self.odds_data)} odds entries")
+                
+                # Show unique games found
+                unique_games = self.odds_data[['game_id', 'home_team', 'away_team']].drop_duplicates()
+                st.info(f"Found odds for {len(unique_games)} unique games")
             
             # Create default team stats based on common knowledge
             default_stats = {
@@ -187,28 +188,59 @@ class NFLPredictor:
             st.error(f"❌ Error loading data: {e}")
             return False
     
-    def find_matching_odds(self, home_team, away_team, home_full, away_full):
-        """Find matching odds for a game"""
-        if self.odds is None or len(self.odds) == 0:
+    def get_game_odds(self, home_team, away_team, home_full, away_full):
+        """Aggregate all odds for a specific game"""
+        if self.odds_data is None or len(self.odds_data) == 0:
             return None
+        
+        # Find all rows for this game
+        game_odds_rows = self.odds_data[
+            (self.odds_data['home_team'] == home_full) & 
+            (self.odds_data['away_team'] == away_full)
+        ]
+        
+        if len(game_odds_rows) == 0:
+            return None
+        
+        # Aggregate odds into a single dictionary
+        odds = {
+            'home_team': home_full,
+            'away_team': away_full,
+            'home_moneyline': None,
+            'away_moneyline': None,
+            'spread': None,
+            'spread_odds': None,
+            'total': None,
+            'over_odds': None,
+            'under_odds': None
+        }
+        
+        for _, row in game_odds_rows.iterrows():
+            market = row.get('market', '')
+            label = row.get('label', '')
+            price = row.get('price', 0)
+            point = row.get('point', None)
             
-        # Show first few odds rows to help debug
-        if not hasattr(self, 'odds_shown'):
-            st.info(f"First 3 odds rows: {self.odds.head(3).to_dict('records')}")
-            self.odds_shown = True
+            if market == 'h2h':
+                if label == home_full:
+                    odds['home_moneyline'] = price
+                elif label == away_full:
+                    odds['away_moneyline'] = price
             
-        for _, odds_row in self.odds.iterrows():
-            # Try to match by team names in various fields
-            for home_field in ['home_team', 'home', 'team_home']:
-                for away_field in ['away_team', 'away', 'team_away']:
-                    if home_field in odds_row and away_field in odds_row:
-                        odds_home = str(odds_row[home_field]).upper()
-                        odds_away = str(odds_row[away_field]).upper()
-                        
-                        if (home_team in odds_home or away_team in odds_away or
-                            home_full.upper() in odds_home or away_full.upper() in odds_away):
-                            return odds_row
-        return None
+            elif market == 'spreads':
+                if label == home_full:
+                    odds['spread'] = point
+                    odds['spread_odds'] = price
+                # Note: We only need one side since spreads are symmetric
+            
+            elif market == 'totals':
+                odds['total'] = point
+                if label == 'Over':
+                    odds['over_odds'] = price
+                elif label == 'Under':
+                    odds['under_odds'] = price
+        
+        return odds
     
     def predict_game(self, home_team, away_team):
         """Predict game outcome using the trained model"""
@@ -274,7 +306,7 @@ class NFLPredictor:
 
 def main():
     st.title("🏈 NFL Week 10 Predictions & Betting Analysis")
-    st.markdown("### Complete Game Analysis: Vegas vs Model Projections")
+    st.markdown("### Model Projections vs Vegas Odds Comparison")
     
     # Initialize predictor
     predictor = NFLPredictor()
@@ -299,18 +331,26 @@ def main():
         home_team = predictor.get_team_abbreviation(home_full)
         away_team = predictor.get_team_abbreviation(away_full)
         
-        game_odds = predictor.find_matching_odds(home_team, away_team, home_full, away_full)
+        # Get aggregated odds for this game
+        game_odds = predictor.get_game_odds(home_team, away_team, home_full, away_full)
+        
+        # Make model projections (USING ONLY HISTORICAL DATA)
         home_win_prob = predictor.predict_game(home_team, away_team)
         
         if home_win_prob is None:
             continue
         
+        # Model projections
         model_spread = predictor.convert_prob_to_spread(home_win_prob)
         model_total = predictor.predict_total_points(home_team, away_team)
         home_score, away_score = predictor.predict_game_score(home_team, away_team, home_win_prob)
         
+        # Determine model predictions
+        model_winner = home_team if home_win_prob > 0.5 else away_team
+        model_loser = away_team if home_win_prob > 0.5 else home_team
+        
         # Create display
-        col1, col2, col3, col4 = st.columns([2, 1.5, 1.5, 1])
+        col1, col2, col3 = st.columns([2, 1.5, 1.5])
         
         with col1:
             st.subheader(f"{away_full} @ {home_full}")
@@ -319,49 +359,25 @@ def main():
             # Vegas Odds
             st.markdown("**🎰 Vegas Odds**")
             if game_odds is not None:
-                # Extract spread and total from the odds data
-                spread = 0
-                total = 45.0
-                home_ml = 0
-                away_ml = 0
-                
-                # Look for spread data
-                if game_odds.get('market') == 'spreads':
-                    spread = game_odds.get('point', 0)
-                    # Determine which team the spread applies to
-                    if game_odds.get('label') == home_full:
-                        spread = -abs(spread)  # Home team is favorite
+                if game_odds['spread'] is not None:
+                    if game_odds['spread'] < 0:
+                        st.write(f"Spread: **{home_team} {game_odds['spread']}** ({game_odds['spread_odds']})")
                     else:
-                        spread = abs(spread)   # Away team is favorite
+                        st.write(f"Spread: **{away_team} +{game_odds['spread']}** ({game_odds['spread_odds']})")
                 
-                # Look for totals data  
-                if game_odds.get('market') == 'totals':
-                    total = game_odds.get('point', 45.0)
+                if game_odds['total'] is not None:
+                    st.write(f"Total: **{game_odds['total']}**")
+                    st.write(f"Over: {game_odds['over_odds']} | Under: {game_odds['under_odds']}")
                 
-                # Look for moneylines
-                if game_odds.get('market') == 'h2h':
-                    if game_odds.get('label') == home_full:
-                        home_ml = game_odds.get('price', 0)
-                    else:
-                        away_ml = game_odds.get('price', 0)
-                
-                if spread < 0:
-                    st.write(f"Spread: **{home_team} {spread}**")
-                else:
-                    st.write(f"Spread: **{away_team} +{spread}**")
-                
-                st.write(f"Total: **{total}**")
-                st.write(f"Moneyline: {home_team} {home_ml} | {away_team} {away_ml}")
+                if game_odds['home_moneyline'] is not None:
+                    st.write(f"Moneyline: {home_team} {game_odds['home_moneyline']} | {away_team} {game_odds['away_moneyline']}")
             else:
-                st.write("Vegas odds: Not found")
-                spread, total = 0, 45.0
+                st.write("Vegas odds: Not available")
         
         with col2:
             st.markdown("**🤖 Model Projections**")
             st.metric("Win Probability", f"{home_win_prob:.1%}")
-            
-            winner = home_team if home_win_prob > 0.5 else away_team
-            st.metric("Predicted Winner", winner)
+            st.metric("Predicted Winner", model_winner)
             
             if home_win_prob > 0.5:
                 st.metric("Projected Spread", f"{home_team} -{abs(model_spread)}")
@@ -376,58 +392,38 @@ def main():
         with col3:
             st.markdown("**🏆 Final Picks**")
             
-            if game_odds is not None:
-                # Against Spread
-                spread_diff = abs(abs(model_spread) - abs(spread))
-                if spread_diff > 1.0:
-                    if abs(model_spread) < abs(spread):
-                        st.success(f"**ATS:** {home_team if home_win_prob > 0.5 else away_team}")
+            if game_odds is not None and game_odds['spread'] is not None:
+                # Against Spread Analysis
+                vegas_spread_abs = abs(game_odds['spread'])
+                model_spread_abs = abs(model_spread)
+                
+                if model_spread_abs < vegas_spread_abs:
+                    # Model thinks favorite should cover by less than Vegas
+                    st.success(f"**ATS Pick:** {model_winner}")
+                    st.write(f"Model: {model_winner} -{model_spread_abs} | Vegas: {model_winner} -{vegas_spread_abs}")
+                else:
+                    # Model thinks underdog covers
+                    st.success(f"**ATS Pick:** {model_loser}")
+                    st.write(f"Model thinks {model_loser} covers +{vegas_spread_abs}")
+                
+                # Over/Under Analysis
+                if game_odds['total'] is not None:
+                    if model_total > game_odds['total']:
+                        st.success(f"**Total Pick:** OVER {game_odds['total']}")
+                        st.write(f"Model: {model_total} | Vegas: {game_odds['total']}")
                     else:
-                        st.success(f"**ATS:** {away_team if home_win_prob > 0.5 else home_team}")
-                else:
-                    st.info("**ATS:** No strong play")
+                        st.success(f"**Total Pick:** UNDER {game_odds['total']}")
+                        st.write(f"Model: {model_total} | Vegas: {game_odds['total']}")
                 
-                # Over/Under
-                total_diff = abs(model_total - total)
-                if total_diff > 2.0:
-                    if model_total > total:
-                        st.success(f"**Total:** OVER {total}")
-                    else:
-                        st.success(f"**Total:** UNDER {total}")
-                else:
-                    st.info("**Total:** No strong play")
+                # Confidence level
+                spread_diff = abs(model_spread_abs - vegas_spread_abs)
+                total_diff = abs(model_total - game_odds['total'])
+                
+                confidence = "🟢 High" if (spread_diff > 2 or total_diff > 3) else "🟡 Medium" if (spread_diff > 1 or total_diff > 2) else "🔴 Low"
+                st.metric("Confidence", confidence)
+                
             else:
-                st.info("Odds needed for picks")
-        
-        with col4:
-            st.markdown("**💡 Betting Tips**")
-            if game_odds is not None and home_score and away_score:
-                tips = []
-                
-                # Strong favorite/underdog
-                if home_win_prob > 0.65:
-                    tips.append("💰 Strong on favorite")
-                elif home_win_prob < 0.35:
-                    tips.append("💰 Strong on underdog")
-                
-                # Spread value
-                spread_value = abs(abs(model_spread) - abs(spread))
-                if spread_value > 2:
-                    tips.append("📈 Good spread value")
-                
-                # Total value
-                total_value = abs(model_total - total)
-                if total_value > 3:
-                    tips.append("🔥 Strong total play")
-                
-                # Display tips
-                if tips:
-                    for tip in tips:
-                        st.success(tip)
-                else:
-                    st.info("⚖️ No strong edge")
-            else:
-                st.info("Odds needed for tips")
+                st.info("Vegas odds needed for picks")
         
         st.markdown("---")
 
