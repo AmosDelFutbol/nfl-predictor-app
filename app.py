@@ -60,6 +60,8 @@ st.markdown("""
         border-radius: 8px;
         display: inline-block;
         margin: 0.5rem 0;
+        text-align: center;
+        width: 100%;
     }
     .probability-bar {
         background: #E5E7EB;
@@ -87,6 +89,9 @@ st.markdown("""
         border-radius: 20px;
         font-weight: 600;
         font-size: 0.9rem;
+        text-align: center;
+        display: inline-block;
+        margin: 0.5rem 0;
     }
     .value-badge {
         background: #D1FAE5;
@@ -95,6 +100,8 @@ st.markdown("""
         border-radius: 12px;
         font-size: 0.8rem;
         font-weight: 600;
+        text-align: center;
+        display: inline-block;
     }
     .weather-info {
         background: #EFF6FF;
@@ -110,6 +117,12 @@ st.markdown("""
         margin-bottom: 1rem;
         border-bottom: 2px solid #E5E7EB;
         padding-bottom: 0.5rem;
+    }
+    .vs-container {
+        text-align: center;
+        padding: 1rem;
+        font-weight: 600;
+        color: #6B7280;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -130,7 +143,6 @@ class WeatherAPI:
             self.team_stadiums = data['team_stadiums']
             return True
         except Exception as e:
-            st.warning(f"⚠️ Could not load stadium data: {e}")
             self.stadiums = {}
             self.team_stadiums = {}
             return False
@@ -212,7 +224,6 @@ class WeatherAPI:
                     'success': True
                 }
         except Exception as e:
-            # Silent fail - don't show warning for every game
             pass
         
         return {'success': False, 'temperature': 65, 'wind_speed': 8, 'conditions': 'Unknown', 'is_raining': False, 'service': 'mock'}
@@ -245,7 +256,6 @@ class WeatherPredictor:
                 self.weather_analysis = json.load(f)
             return True
         except Exception as e:
-            st.warning(f"⚠️ Could not load weather analysis: {e}")
             return False
     
     def get_stadium_weather_impact(self, stadium_name, temperature, wind_speed, is_raining=False):
@@ -269,27 +279,21 @@ class WeatherPredictor:
         
         # Temperature impact
         if temperature <= 32:
-            # Freezing weather reduces scoring
-            freezing_avg = self.weather_analysis['key_insights']['avg_points_freezing_temp']
-            moderate_avg = self.weather_analysis['key_insights']['avg_points_moderate_temp']
-            point_adjustment -= (moderate_avg - freezing_avg) / 2
+            point_adjustment -= 2.0
         elif temperature <= 45:
-            # Cold weather slight reduction
             point_adjustment -= 1.0
         
         # Wind impact
         if wind_speed > 20:
-            windy_avg = self.weather_analysis['key_insights']['avg_points_windy']
-            calm_avg = self.weather_analysis['key_insights']['avg_points_calm_wind']
-            point_adjustment -= (calm_avg - windy_avg) / 2
+            point_adjustment -= 2.0
         elif wind_speed > 15:
-            point_adjustment -= 0.5
+            point_adjustment -= 1.0
         
         # Rain impact
         if is_raining:
             point_adjustment -= 2.0
         
-        return point_adjustment, 0  # spread_adjustment
+        return point_adjustment, 0
     
     def adjust_prediction_for_weather(self, home_team, away_team, projected_home_score, projected_away_score, game_date):
         """Adjust scores based on weather conditions"""
@@ -347,7 +351,6 @@ class NFLPredictor:
                 sos_data = json.load(f)
             return sos_data['sos_rankings']
         except Exception as e:
-            st.warning(f"⚠️ SOS data not available: {e}")
             return {}
 
     def load_model(self):
@@ -474,9 +477,8 @@ class NFLPredictor:
             sos_data = self.load_sos_data()
             
             # Load weather integration
-            if not self.weather_predictor.load_data():
-                st.warning("⚠️ Weather data not available - using base predictions")
-            
+            self.weather_predictor.load_data()
+
             # Create default team stats with SOS
             default_stats = {
                 'KC': [0.75, 28.5, 19.2], 'BUF': [0.65, 26.8, 21.1], 'SF': [0.80, 30.1, 18.5],
@@ -674,7 +676,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
     away_record = "3-5"
     
     with st.container():
-        st.markdown(f'<div class="game-card">', unsafe_allow_html=True)
+        st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
         # Game Header
         col1, col2, col3 = st.columns([3, 1, 3])
@@ -684,9 +686,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             st.markdown(f'<div class="record">{away_record} • {away_team}</div>', unsafe_allow_html=True)
         
         with col2:
-            st.markdown("<div style='text-align: center; padding: 1rem;'>")
-            st.markdown("**@**")
-            st.markdown("</div>")
+            st.markdown('<div class="vs-container">@</div>', unsafe_allow_html=True)
         
         with col3:
             st.markdown(f'<div class="team-header">{home_full}</div>', unsafe_allow_html=True)
@@ -706,7 +706,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             # Projected Winner
             model_winner = home_team if home_win_prob > 0.5 else away_team
             st.markdown("**Projected Winner**")
-            st.markdown(f'<div style="font-size: 1.2rem; font-weight: 600; color: #1E40AF;">{model_winner}</div>', unsafe_allow_html=True)
+            st.markdown(f'**{model_winner}**')
             
             # Spread Comparison
             model_spread = predictor.convert_prob_to_spread(home_win_prob)
@@ -725,9 +725,10 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             st.markdown(f"**{win_prob_pct:.1f}%**")
             
             # Progress bar
+            progress_width = min(100, max(0, win_prob_pct))
             st.markdown(f'''
             <div class="probability-bar">
-                <div class="probability-fill" style="width: {win_prob_pct}%"></div>
+                <div class="probability-fill" style="width: {progress_width}%"></div>
             </div>
             ''', unsafe_allow_html=True)
             
@@ -745,6 +746,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             if game_odds and game_odds['spread'] is not None:
                 # ATS Analysis
                 vegas_spread = game_odds['spread']
+                model_spread = predictor.convert_prob_to_spread(home_win_prob)
                 
                 if vegas_spread < 0:  # Home team is favorite
                     favorite = home_team
@@ -786,7 +788,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             with col2:
                 if home_score and away_score:
                     st.markdown("**📊 Projected Score**")
-                    st.markdown(f"**{away_team} {away_score} - {home_team} {home_score}**")
+                    st.markdown(f"**{away_team} {int(away_score)} - {home_team} {int(home_score)}**")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -827,7 +829,6 @@ def main():
         home_win_prob = predictor.predict_game(home_team, away_team)
         
         if home_win_prob is None:
-            st.warning(f"Could not predict {home_team} vs {away_team}")
             continue
         
         # Get scores with weather adjustment
