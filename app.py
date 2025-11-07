@@ -41,114 +41,93 @@ st.markdown("""
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         border: 1px solid #E5E7EB;
     }
-    .team-header {
-        font-size: 1.4rem;
-        font-weight: 600;
-        margin-bottom: 0.25rem;
-    }
-    .record {
-        font-size: 0.9rem;
-        color: #6B7280;
-        margin-bottom: 0.5rem;
-    }
-    .spread-line {
-        font-size: 1.2rem;
+    .score-header {
+        font-size: 1.8rem;
         font-weight: 700;
-        color: #059669;
-        background: #D1FAE5;
-        padding: 0.75rem 1.5rem;
-        border-radius: 10px;
+        color: #1E3A8A;
         text-align: center;
-        margin: 1rem 0;
-        border: 2px solid #10B981;
-    }
-    .probability-bar {
-        background: #E5E7EB;
+        margin-bottom: 2rem;
+        padding: 1rem;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
         border-radius: 10px;
-        height: 12px;
-        margin: 0.75rem 0;
-        overflow: hidden;
     }
-    .probability-fill {
-        height: 100%;
-        border-radius: 10px;
-        background: linear-gradient(90deg, #3B82F6, #1D4ED8);
-    }
-    .info-card {
+    .projections-card {
         background: #F8FAFC;
         border-radius: 10px;
-        padding: 1.25rem;
-        margin: 0.75rem 0;
+        padding: 1.5rem;
+        margin: 1rem 0;
         border-left: 4px solid #3B82F6;
     }
-    .pick-card {
+    .final-projections-card {
         background: #ECFDF5;
         border-radius: 10px;
-        padding: 1.25rem;
-        margin: 0.75rem 0;
-        border: 2px solid #10B981;
-    }
-    .pick-badge {
-        background: #059669;
-        color: white;
-        padding: 0.75rem 1.5rem;
-        border-radius: 25px;
-        font-weight: 700;
-        font-size: 1rem;
-        text-align: center;
-        display: block;
-        margin: 0.5rem 0;
-    }
-    .value-badge {
-        background: #D1FAE5;
-        color: #059669;
-        padding: 0.5rem 1rem;
-        border-radius: 15px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        text-align: center;
-        display: inline-block;
-        margin: 0.25rem 0;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-left: 4px solid #10B981;
     }
     .weather-card {
         background: #EFF6FF;
         border-radius: 10px;
-        padding: 1.25rem;
-        margin: 0.75rem 0;
+        padding: 1.5rem;
+        margin: 1rem 0;
         border-left: 4px solid #60A5FA;
     }
+    .projection-item {
+        margin: 1rem 0;
+        padding: 0.75rem;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #E5E7EB;
+    }
+    .probability-badge {
+        background: #1E40AF;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: inline-block;
+        margin: 0.25rem 0;
+    }
+    .confidence-badge {
+        background: #059669;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        display: inline-block;
+        margin: 0.25rem 0;
+    }
+    .odds-value {
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #059669;
+        margin-left: 0.5rem;
+    }
     .section-title {
-        font-size: 1.2rem;
+        font-size: 1.3rem;
         font-weight: 700;
         color: #1F2937;
         margin-bottom: 1rem;
         padding-bottom: 0.5rem;
-        border-bottom: 3px solid #E5E7EB;
+        border-bottom: 2px solid #E5E7EB;
     }
-    .vs-container {
-        text-align: center;
-        padding: 1.5rem;
-        font-weight: 700;
-        color: #6B7280;
-        font-size: 1.1rem;
-    }
-    .metric-value {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #1E40AF;
+    .comparison-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
         margin: 0.5rem 0;
+        padding: 0.5rem;
     }
-    .comparison-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-        margin: 1rem 0;
+    .model-value {
+        font-weight: 600;
+        color: #1E40AF;
     }
-    .comparison-item {
-        text-align: center;
-        padding: 0.75rem;
-        background: #F3F4F6;
-        border-radius: 8px;
+    .vegas-value {
+        font-weight: 600;
+        color: #DC2626;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -689,181 +668,163 @@ class NFLPredictor:
         total = (home_offense + away_offense + home_defense + away_defense) / 2
         return round(total * 2) / 2
 
+def calculate_cover_probability(model_spread, vegas_spread):
+    """Calculate probability of covering the spread"""
+    # Simple heuristic: the closer model spread is to Vegas spread, the higher the confidence
+    spread_diff = abs(model_spread - vegas_spread)
+    if spread_diff <= 1:
+        return 75  # High confidence
+    elif spread_diff <= 3:
+        return 65  # Medium confidence
+    elif spread_diff <= 6:
+        return 55  # Low confidence
+    else:
+        return 50  # Toss-up
+
+def calculate_over_probability(model_total, vegas_total):
+    """Calculate probability of over hitting"""
+    # Simple heuristic based on difference between model and Vegas total
+    total_diff = model_total - vegas_total
+    if total_diff >= 3:
+        return 70  # Strong over
+    elif total_diff >= 1:
+        return 60  # Lean over
+    elif total_diff >= -1:
+        return 50  # Toss-up
+    elif total_diff >= -3:
+        return 40  # Lean under
+    else:
+        return 30  # Strong under
+
 def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data):
-    """Create a professional game card with proper layout"""
+    """Create a professional game card matching the desired layout"""
     
     home_full = game['home']
     away_full = game['away']
     home_team = predictor.get_team_abbreviation(home_full)
     away_team = predictor.get_team_abbreviation(away_full)
     
-    # Mock records for demonstration
-    home_record = "7-2"
-    away_record = "3-5"
-    
     with st.container():
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
-        # Game Header - Teams and Spread
-        col1, col2, col3 = st.columns([3, 1, 3])
+        # Score Header (like "Broncos 24 @ 21 Raiders")
+        st.markdown(f'<div class="score-header">{away_team} {int(away_score)} @ {int(home_score)} {home_team}</div>', unsafe_allow_html=True)
         
-        with col1:
-            st.markdown(f'<div class="team-header">{away_full}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="record">{away_record} • {away_team}</div>', unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown('<div class="vs-container">@</div>', unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f'<div class="team-header">{home_full}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="record">{home_record} • {home_team}</div>', unsafe_allow_html=True)
-        
-        # Spread Line - FIXED LOGIC
-        if game_odds and game_odds['spread'] is not None:
-            vegas_spread = game_odds['spread']
-            # Determine which team is favored
-            if vegas_spread < 0:  # Home team is favorite
-                spread_display = f"{home_team} -{abs(vegas_spread)}"
-            else:  # Away team is favorite
-                spread_display = f"{away_team} -{vegas_spread}"
-            st.markdown(f'<div class="spread-line">{spread_display}</div>', unsafe_allow_html=True)
-        
-        # Main Content - Two Columns: Model Projections vs Vegas Odds & Picks
+        # Two Column Layout
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            # Model Projections Card
-            st.markdown('<div class="info-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">🤖 Model Projections</div>', unsafe_allow_html=True)
+            # Projections Card
+            st.markdown('<div class="projections-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">Projections</div>', unsafe_allow_html=True)
             
-            # Projected Winner
-            model_winner = home_team if home_win_prob > 0.5 else away_team
-            st.markdown("**Projected Winner**")
-            st.markdown(f'<div class="metric-value">{model_winner}</div>', unsafe_allow_html=True)
+            # Winner Projection
+            model_winner = home_full if home_win_prob > 0.5 else away_full
+            winner_abbr = home_team if home_win_prob > 0.5 else away_team
+            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
+            st.markdown(f'**Winner:** {model_winner}')
+            if game_odds:
+                home_ml = game_odds.get('home_moneyline', 'N/A')
+                away_ml = game_odds.get('away_moneyline', 'N/A')
+                if home_win_prob > 0.5:
+                    st.markdown(f'<span class="odds-value">{home_team}: {home_ml} | {away_team}: {away_ml}</span>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<span class="odds-value">{away_team}: {away_ml} | {home_team}: {home_ml}</span>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            # Projected Score
-            if home_score and away_score:
-                st.markdown("**Projected Score**")
-                st.markdown(f'<div class="metric-value">{away_team} {int(away_score)} - {home_team} {int(home_score)}</div>', unsafe_allow_html=True)
-            
-            # Projected Spread
+            # Spread Projection
             model_spread = predictor.convert_prob_to_spread(home_win_prob)
-            st.markdown("**Projected Spread**")
-            if model_spread < 0:
-                st.markdown(f'<div class="metric-value">{home_team} -{abs(model_spread):.1f}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="metric-value">{away_team} -{model_spread:.1f}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
+            st.markdown(f'**Spread:** {model_spread:.1f}')
+            if game_odds and game_odds.get('spread'):
+                vegas_spread = game_odds['spread']
+                st.markdown(f'<span class="odds-value">Spread: {vegas_spread}</span>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            # Projected Total
+            # Totals Projection
             model_total = predictor.predict_total_points(home_team, away_team)
-            st.markdown("**Projected Total**")
-            st.markdown(f'<div class="metric-value">{model_total:.1f}</div>', unsafe_allow_html=True)
+            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
+            st.markdown(f'**Totals:** {model_total:.1f}')
+            if game_odds and game_odds.get('total'):
+                vegas_total = game_odds['total']
+                st.markdown(f'<span class="odds-value">{vegas_total}</span>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)  # Close info-card
+            st.markdown('</div>', unsafe_allow_html=True)  # Close projections-card
             
-            # Weather Information
+            # Weather Card
             if weather_data and weather_data.get('success'):
                 st.markdown('<div class="weather-card">', unsafe_allow_html=True)
-                st.markdown("**🌤️ Weather Conditions**")
+                st.markdown('<div class="section-title">Weather</div>', unsafe_allow_html=True)
+                
                 stadium_name = predictor.weather_predictor.weather_api.team_stadiums.get(home_full, "Unknown Stadium")
-                st.write(f"**{stadium_name}**")
-                st.write(f"{weather_data.get('conditions', 'Unknown')}")
+                stadium_info = predictor.weather_predictor.weather_api.stadiums.get(stadium_name, {})
+                roof_type = stadium_info.get('roof_type', 'Unknown')
+                
+                st.write(f"**Venue:** {stadium_name}")
+                st.write(f"**Conditions:** {weather_data.get('conditions', 'Unknown')}")
                 st.write(f"**Temperature:** {weather_data.get('temperature', 'N/A')}°F")
                 st.write(f"**Wind:** {weather_data.get('wind_speed', 'N/A')} mph")
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.write(f"**Stadium Type:** {roof_type.title()}")
+                
+                st.markdown('</div>', unsafe_allow_html=True)  # Close weather-card
         
         with col2:
-            # Vegas Odds Card
-            st.markdown('<div class="info-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">🎰 Vegas Odds</div>', unsafe_allow_html=True)
+            # Final Projections Card
+            st.markdown('<div class="final-projections-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">Final Projections</div>', unsafe_allow_html=True)
             
-            if game_odds is not None:
-                # Spread
-                if game_odds['spread'] is not None:
-                    vegas_spread = game_odds['spread']
-                    if vegas_spread < 0:
-                        st.markdown(f"**Spread:** {home_team} -{abs(vegas_spread)}")
-                    else:
-                        st.markdown(f"**Spread:** {away_team} -{vegas_spread}")
-                
-                # Total
-                if game_odds['total'] is not None:
-                    st.markdown(f"**Total:** {game_odds['total']}")
-                
-                # Moneyline
-                if game_odds['home_moneyline'] is not None and game_odds['away_moneyline'] is not None:
-                    st.markdown(f"**Moneyline:** {home_team} {game_odds['home_moneyline']}")
-                    st.markdown(f"**Moneyline:** {away_team} {game_odds['away_moneyline']}")
-            else:
-                st.markdown("Odds not available")
+            # Winner Pick with Probability
+            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
+            st.markdown(f'**Winner:** {model_winner}')
+            win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
+            st.markdown(f'<div class="probability-badge">WIN Probability: {win_prob_pct:.0f}%</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)  # Close info-card
-            
-            # Win Probability Comparison
-            st.markdown('<div class="info-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">📊 Win Probability</div>', unsafe_allow_html=True)
-            
-            win_prob_pct = home_win_prob * 100
-            market_prob = 71.0  # Default market probability
-            
-            # Progress bar
-            progress_width = min(100, max(0, win_prob_pct))
-            st.markdown(f"**Model: {win_prob_pct:.1f}%**")
-            st.markdown(f'''
-            <div class="probability-bar">
-                <div class="probability-fill" style="width: {progress_width}%"></div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            # Market vs Model comparison
-            st.markdown("**Market vs Model**")
-            col_m1, col_m2 = st.columns(2)
-            with col_m1:
-                st.metric("Market", f"{market_prob}%")
-            with col_m2:
-                st.metric("Model", f"{win_prob_pct:.1f}%")
-            
-            st.markdown('</div>', unsafe_allow_html=True)  # Close info-card
-            
-            # Final Picks Card
-            st.markdown('<div class="pick-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">🏆 Final Picks</div>', unsafe_allow_html=True)
-            
-            if game_odds and game_odds['spread'] is not None:
-                # ATS Analysis - FIXED LOGIC
+            # Spread Pick
+            if game_odds and game_odds.get('spread'):
                 vegas_spread = game_odds['spread']
                 model_spread = predictor.convert_prob_to_spread(home_win_prob)
                 
-                if vegas_spread < 0:  # Home team is Vegas favorite
-                    favorite = home_team
-                    underdog = away_team
-                    if model_spread <= vegas_spread:  # Model thinks favorite covers
-                        ats_pick = favorite
-                        pick_type = "Favorite"
-                    else:  # Model thinks underdog covers
-                        ats_pick = underdog
-                        pick_type = "Underdog"
-                else:  # Away team is Vegas favorite
-                    favorite = away_team
-                    underdog = home_team
-                    if model_spread >= vegas_spread:  # Model thinks favorite covers
-                        ats_pick = favorite
-                        pick_type = "Favorite"
-                    else:  # Model thinks underdog covers
-                        ats_pick = underdog
-                        pick_type = "Underdog"
+                # Determine ATS pick
+                if vegas_spread < 0:  # Home team favored
+                    if model_spread <= vegas_spread:  # Model thinks home covers
+                        ats_pick = f"{home_team} to cover"
+                    else:  # Model thinks away covers
+                        ats_pick = f"{away_team} to cover"
+                else:  # Away team favored
+                    if model_spread >= vegas_spread:  # Model thinks away covers
+                        ats_pick = f"{away_team} to cover"
+                    else:  # Model thinks home covers
+                        ats_pick = f"{home_team} to cover"
                 
-                st.markdown(f'<div class="pick-badge">{ats_pick} {pick_type}</div>', unsafe_allow_html=True)
-                st.markdown('<div class="value-badge">Projected +EV</div>', unsafe_allow_html=True)
+                cover_prob = calculate_cover_probability(model_spread, vegas_spread)
                 
-                # Expected Value and Cover Probability
-                col_ev, col_cp = st.columns(2)
-                with col_ev:
-                    st.metric("Expected Value", "+1.3%")
-                with col_cp:
-                    st.metric("Cover Probability", "53.1%")
+                st.markdown('<div class="projection-item">', unsafe_allow_html=True)
+                st.markdown(f'**Spread:** {ats_pick}')
+                st.markdown(f'<div class="confidence-badge">{cover_prob}%</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)  # Close pick-card
+            # Totals Pick
+            if game_odds and game_odds.get('total'):
+                vegas_total = game_odds['total']
+                model_total = predictor.predict_total_points(home_team, away_team)
+                
+                if model_total > vegas_total:
+                    totals_pick = "Lean Over"
+                else:
+                    totals_pick = "Lean Under"
+                
+                over_prob = calculate_over_probability(model_total, vegas_total)
+                if totals_pick == "Lean Under":
+                    over_prob = 100 - over_prob
+                
+                st.markdown('<div class="projection-item">', unsafe_allow_html=True)
+                st.markdown(f'**Totals:** {totals_pick}')
+                st.markdown(f'<div class="confidence-badge">{over_prob}%</div>', unsafe_allow_html=True)
+                st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)  # Close final-projections-card
         
         st.markdown('</div>', unsafe_allow_html=True)  # Close game-card
 
