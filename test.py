@@ -200,6 +200,105 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Weather Predictor Class (ADDED THIS MISSING CLASS)
+class WeatherPredictor:
+    def __init__(self):
+        self.weather_analysis = {}
+        self.weather_api = WeatherAPI()
+    
+    def load_data(self):
+        """Load weather data - placeholder implementation"""
+        try:
+            # Try to load from file if it exists
+            with open('weather_data.json', 'r') as f:
+                self.weather_analysis = json.load(f)
+            return True
+        except:
+            # Create empty weather data structure
+            self.weather_analysis = {}
+            return True
+    
+    def adjust_prediction_for_weather(self, home_full, away_full, home_score, away_score, game_date):
+        """Apply weather adjustments to scores - placeholder implementation"""
+        # For now, return scores unchanged with minimal weather data
+        weather_data = {
+            'success': False,
+            'conditions': 'Unknown',
+            'temperature': 'N/A', 
+            'wind_speed': 'N/A'
+        }
+        return home_score, away_score, weather_data
+
+class WeatherAPI:
+    def __init__(self):
+        self.team_stadiums = {
+            'Arizona Cardinals': 'State Farm Stadium',
+            'Atlanta Falcons': 'Mercedes-Benz Stadium',
+            'Baltimore Ravens': 'M&T Bank Stadium',
+            'Buffalo Bills': 'Highmark Stadium',
+            'Carolina Panthers': 'Bank of America Stadium',
+            'Chicago Bears': 'Soldier Field',
+            'Cincinnati Bengals': 'Paycor Stadium',
+            'Cleveland Browns': 'Cleveland Browns Stadium',
+            'Dallas Cowboys': 'AT&T Stadium',
+            'Denver Broncos': 'Empower Field at Mile High',
+            'Detroit Lions': 'Ford Field',
+            'Green Bay Packers': 'Lambeau Field',
+            'Houston Texans': 'NRG Stadium',
+            'Indianapolis Colts': 'Lucas Oil Stadium',
+            'Jacksonville Jaguars': 'TIAA Bank Field',
+            'Kansas City Chiefs': 'Arrowhead Stadium',
+            'Las Vegas Raiders': 'Allegiant Stadium',
+            'Los Angeles Chargers': 'SoFi Stadium',
+            'Los Angeles Rams': 'SoFi Stadium',
+            'Miami Dolphins': 'Hard Rock Stadium',
+            'Minnesota Vikings': 'U.S. Bank Stadium',
+            'New England Patriots': 'Gillette Stadium',
+            'New Orleans Saints': 'Caesars Superdome',
+            'New York Giants': 'MetLife Stadium',
+            'New York Jets': 'MetLife Stadium',
+            'Philadelphia Eagles': 'Lincoln Financial Field',
+            'Pittsburgh Steelers': 'Acrisure Stadium',
+            'San Francisco 49ers': 'Levi\'s Stadium',
+            'Seattle Seahawks': 'Lumen Field',
+            'Tampa Bay Buccaneers': 'Raymond James Stadium',
+            'Tennessee Titans': 'Nissan Stadium',
+            'Washington Commanders': 'FedExField'
+        }
+        
+        self.stadiums = {
+            'State Farm Stadium': {'roof_type': 'retractable'},
+            'Mercedes-Benz Stadium': {'roof_type': 'retractable'},
+            'M&T Bank Stadium': {'roof_type': 'open'},
+            'Highmark Stadium': {'roof_type': 'open'},
+            'Bank of America Stadium': {'roof_type': 'open'},
+            'Soldier Field': {'roof_type': 'open'},
+            'Paycor Stadium': {'roof_type': 'open'},
+            'Cleveland Browns Stadium': {'roof_type': 'open'},
+            'AT&T Stadium': {'roof_type': 'retractable'},
+            'Empower Field at Mile High': {'roof_type': 'open'},
+            'Ford Field': {'roof_type': 'dome'},
+            'Lambeau Field': {'roof_type': 'open'},
+            'NRG Stadium': {'roof_type': 'retractable'},
+            'Lucas Oil Stadium': {'roof_type': 'retractable'},
+            'TIAA Bank Field': {'roof_type': 'open'},
+            'Arrowhead Stadium': {'roof_type': 'open'},
+            'Allegiant Stadium': {'roof_type': 'dome'},
+            'SoFi Stadium': {'roof_type': 'open'},
+            'Hard Rock Stadium': {'roof_type': 'open'},
+            'U.S. Bank Stadium': {'roof_type': 'fixed'},
+            'Gillette Stadium': {'roof_type': 'open'},
+            'Caesars Superdome': {'roof_type': 'dome'},
+            'MetLife Stadium': {'roof_type': 'open'},
+            'Lincoln Financial Field': {'roof_type': 'open'},
+            'Acrisure Stadium': {'roof_type': 'open'},
+            'Levi\'s Stadium': {'roof_type': 'open'},
+            'Lumen Field': {'roof_type': 'open'},
+            'Raymond James Stadium': {'roof_type': 'open'},
+            'Nissan Stadium': {'roof_type': 'open'},
+            'FedExField': {'roof_type': 'open'}
+        }
+
 # ELO Processor Class
 class ELOProcessor:
     def __init__(self):
