@@ -10,8 +10,8 @@ class EnhancedNFLProjector:
             # Load player data
             self.rb_data = pd.read_csv('RB_season.csv')
             self.qb_data = pd.read_csv('QB_season.csv')
-            self.wr_data = pd.read_csv('WR_season.csv')  # Add WR data
-            self.te_data = pd.read_csv('TE_season.csv')  # Add TE data
+            # self.wr_data = pd.read_csv('WR_season.csv')  # Add WR data
+            # self.te_data = pd.read_csv('TE_season.csv')  # Add TE data
             
             # Load JSON defense and offense data
             with open('2025_NFL_DEFENSE.json', 'r') as f:
@@ -34,6 +34,8 @@ class EnhancedNFLProjector:
     
     def _get_defense_stats(self, team_name):
         """Get defense stats for a specific team"""
+        if self.defense_data is None:
+            return None
         for team in self.defense_data:
             if team['Team'] == team_name:
                 return team
@@ -41,6 +43,8 @@ class EnhancedNFLProjector:
     
     def _get_offense_stats(self, team_name):
         """Get offense stats for a specific team"""
+        if self.offense_data is None:
+            return None
         for team in self.offense_data:
             if team['Team'] == team_name:
                 return team
@@ -55,17 +59,18 @@ class EnhancedNFLProjector:
         }
         
         # Get SOS adjustment
-        if player_team in self.sos_data:
+        if self.sos_data and player_team in self.sos_data:
             context['sos_adjustment'] = 1.0 + (self.sos_data[player_team]['combined_sos'] - 0.5) * 0.3
         
         # Get game odds
-        for odds in self.odds_data:
-            if (odds.get('home_team') == player_team and odds.get('away_team') == opponent_team) or \
-               (odds.get('home_team') == opponent_team and odds.get('away_team') == player_team):
-                if odds.get('market') == 'totals' and odds.get('point'):
-                    context['expected_total'] = odds['point']
-                elif odds.get('market') == 'spreads' and odds.get('point'):
-                    context['spread'] = odds['point']
+        if self.odds_data:
+            for odds in self.odds_data:
+                if (odds.get('home_team') == player_team and odds.get('away_team') == opponent_team) or \
+                   (odds.get('home_team') == opponent_team and odds.get('away_team') == player_team):
+                    if odds.get('market') == 'totals' and odds.get('point'):
+                        context['expected_total'] = odds['point']
+                    elif odds.get('market') == 'spreads' and odds.get('point'):
+                        context['spread'] = odds['point']
         
         return context
     
@@ -229,83 +234,6 @@ class EnhancedNFLProjector:
         
         return projections, qb_stats, defense_stats, game_context
     
-    def project_receiving_stats(self, player_name, opponent_team, games_played=9):
-        """Enhanced receiving projections for WRs and TEs"""
-        # Check WR data first
-        wr_row = self.wr_data[self.wr_data['PlayerName'] == player_name]
-        if not wr_row.empty:
-            return self._project_wr_receiving(wr_row.iloc[0], opponent_team, games_played)
-        
-        # Check TE data
-        te_row = self.te_data[self.te_data['PlayerName'] == player_name]
-        if not te_row.empty:
-            return self._project_te_receiving(te_row.iloc[0], opponent_team, games_played)
-        
-        # Check RB data for receiving RBs
-        rb_row = self.rb_data[self.rb_data['PlayerName'] == player_name]
-        if not rb_row.empty:
-            return self._project_rb_receiving(rb_row.iloc[0], opponent_team, games_played)
-        
-        raise ValueError(f"Player '{player_name}' not found in WR, TE, or RB data")
-    
-    def _project_wr_receiving(self, wr_stats, opponent_team, games_played):
-        """Project receiving stats for wide receivers"""
-        return self._project_receiver_stats(wr_stats, opponent_team, games_played, 'WR')
-    
-    def _project_te_receiving(self, te_stats, opponent_team, games_played):
-        """Project receiving stats for tight ends"""
-        return self._project_receiver_stats(te_stats, opponent_team, games_played, 'TE')
-    
-    def _project_rb_receiving(self, rb_stats, opponent_team, games_played):
-        """Project receiving stats for running backs"""
-        return self._project_receiver_stats(rb_stats, opponent_team, games_played, 'RB')
-    
-    def _project_receiver_stats(self, player_stats, opponent_team, games_played, position):
-        """Common receiving projection logic for all positions"""
-        player_team = player_stats['Team']
-        
-        defense_stats = self._get_defense_stats(opponent_team)
-        if not defense_stats:
-            raise ValueError(f"Defense stats for '{opponent_team}' not found")
-        
-        game_context = self.get_game_context(player_team, opponent_team)
-        
-        projections = {}
-        
-        # RECEIVING YARDS
-        rec_yds_pg = player_stats['ReceivingYDS'] / games_played
-        def_pass_yds_allowed = defense_stats['PASSING YARDS ALLOWED']
-        
-        projections['ReceivingYards'] = (
-            rec_yds_pg * (def_pass_yds_allowed / 231.8) * game_context['sos_adjustment']
-        )
-        
-        # RECEPTIONS
-        rec_pg = player_stats['ReceivingRec'] / games_played
-        def_completions_allowed = defense_stats['PASSING COMPLETIONS ALLOWED']
-        
-        projections['Receptions'] = rec_pg * (def_completions_allowed / 24.1)
-        
-        # RECEIVING TDs
-        rec_td_pg = player_stats['ReceivingTD'] / games_played
-        
-        projections['ReceivingTDs'] = (
-            (rec_td_pg + defense_stats['PASSING TD ALLOWED'] * 0.3) / 1.3 *
-            (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
-        )
-        
-        # TARGETS (estimate)
-        projections['Targets'] = projections['Receptions'] * 1.5  # Estimate 66% catch rate
-        
-        # FANTASY POINTS (PPR)
-        projections['FantasyPoints'] = (
-            projections['ReceivingYards'] * 0.1 +
-            projections['Receptions'] * 1.0 +  # Full PPR
-            projections['ReceivingTDs'] * 6
-        )
-        
-        return projections, player_stats, defense_stats, game_context, position
-    
     def get_available_rushers(self):
         """Get all players with rushing stats"""
         rushers = self.rb_data['PlayerName'].tolist() + self.qb_data['PlayerName'].tolist()
@@ -314,17 +242,13 @@ class EnhancedNFLProjector:
     def get_available_passers(self):
         return self.qb_data['PlayerName'].tolist()
     
-    def get_available_receivers(self):
-        """Get all players with receiving stats"""
-        receivers = (self.wr_data['PlayerName'].tolist() + 
-                    self.te_data['PlayerName'].tolist() + 
-                    self.rb_data['PlayerName'].tolist())
-        return sorted(list(set(receivers)))
-    
     def get_available_teams(self):
+        """Get available teams from defense data"""
         teams = set()
-        for team in self.defense_data:
-            teams.add(team['Team'])
+        if self.defense_data:
+            for team in self.defense_data:
+                if 'Team' in team:
+                    teams.add(team['Team'])
         return sorted(list(teams))
 
 def main():
@@ -344,8 +268,8 @@ def main():
     
     projector = st.session_state.projector
     
-    # Create tabs for different stats
-    tab1, tab2, tab3 = st.tabs(["🏃‍♂️ Rushing", "🎯 Passing", "🤙 Receiving"])
+    # Create tabs for different stats - only Rushing and Passing for now
+    tab1, tab2 = st.tabs(["🏃‍♂️ Rushing", "🎯 Passing"])  # Removed Receiving tab for now
     
     with tab1:
         st.subheader("Rushing Projections")
@@ -452,7 +376,9 @@ def main():
                         
                 except Exception as e:
                     st.error(f"Error generating projection: {e}")
-    
+
+    # Commented out Receiving tab for now
+    """
     with tab3:
         st.subheader("Receiving Projections")
         
@@ -504,6 +430,7 @@ def main():
                         
                 except Exception as e:
                     st.error(f"Error generating projection: {e}")
+    """
 
 if __name__ == "__main__":
     main()
