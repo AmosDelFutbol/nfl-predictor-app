@@ -6,44 +6,92 @@ import streamlit as st
 class EnhancedNFLProjector:
     def __init__(self):
         """Initialize the enhanced projector with all available data sources"""
+        self.rb_data = None
+        self.qb_data = None
+        self.defense_data = None
+        self.offense_data = None
+        self.sos_data = None
+        self.schedule_data = None
+        self.odds_data = None
+        
         try:
             # Load player data
             self.rb_data = pd.read_csv('RB_season.csv')
             self.qb_data = pd.read_csv('QB_season.csv')
-            
-            # Load JSON defense and offense data
-            with open('2025_NFL_DEFENSE.json', 'r') as f:
-                self.defense_data = json.load(f)
-            with open('2025_NFL_OFFENSE.json', 'r') as f:
-                self.offense_data = json.load(f)
-            
-            # Load other data
-            with open('nfl_strength_of_schedule.json', 'r') as f:
-                self.sos_data = json.load(f)['sos_rankings']
-            with open('week_10_schedule.json', 'r') as f:
-                self.schedule_data = json.load(f)['Week 10']
-            with open('week_10_odds.json', 'r') as f:
-                self.odds_data = json.load(f)
-            
-            # Clean the data - fill NaN values
-            self._clean_data()
-            
-            st.success("✅ All data loaded successfully!")
+            st.success("✅ Player data loaded successfully!")
             
         except Exception as e:
-            st.error(f"❌ Error loading data: {e}")
+            st.error(f"❌ Error loading player data: {e}")
+        
+        # Load JSON data with error handling for each file
+        self._load_json_data()
+        
+        # Clean the data - fill NaN values
+        self._clean_data()
+    
+    def _load_json_data(self):
+        """Load JSON data files with individual error handling"""
+        # Load defense data
+        try:
+            with open('2025_NFL_DEFENSE.json', 'r') as f:
+                self.defense_data = json.load(f)
+            st.success("✅ Defense data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load defense data: {e}")
+            self.defense_data = []
+        
+        # Load offense data
+        try:
+            with open('2025_NFL_OFFENSE.json', 'r') as f:
+                self.offense_data = json.load(f)
+            st.success("✅ Offense data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load offense data: {e}")
+            self.offense_data = []
+        
+        # Load strength of schedule data
+        try:
+            with open('nfl_strength_of_schedule.json', 'r') as f:
+                self.sos_data = json.load(f)['sos_rankings']
+            st.success("✅ Strength of schedule data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load strength of schedule data: {e}")
+            self.sos_data = {}
+        
+        # Load schedule data - UPDATED FILENAME
+        try:
+            with open('schedule.json', 'r') as f:  # Changed from 'week_10_schedule.json'
+                schedule_data = json.load(f)
+                # Handle different schedule formats
+                if 'Week 10' in schedule_data:
+                    self.schedule_data = schedule_data['Week 10']
+                else:
+                    self.schedule_data = schedule_data
+            st.success("✅ Schedule data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load schedule data: {e}")
+            self.schedule_data = []
+        
+        # Load odds data
+        try:
+            with open('week_10_odds.json', 'r') as f:
+                self.odds_data = json.load(f)
+            st.success("✅ Odds data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load odds data: {e}")
+            self.odds_data = []
     
     def _clean_data(self):
         """Clean the data by filling NaN values with appropriate defaults"""
         # Clean RB data
-        if hasattr(self, 'rb_data') and self.rb_data is not None:
+        if self.rb_data is not None:
             rb_numeric_columns = ['RushingYDS', 'RushingTD', 'TouchCarries', 'ReceivingYDS', 'ReceivingRec', 'ReceivingTD']
             for col in rb_numeric_columns:
                 if col in self.rb_data.columns:
                     self.rb_data[col] = self.rb_data[col].fillna(0)
         
         # Clean QB data
-        if hasattr(self, 'qb_data') and self.qb_data is not None:
+        if self.qb_data is not None:
             qb_numeric_columns = ['PassingYDS', 'PassingTD', 'PassingInt', 'RushingYDS', 'RushingTD']
             for col in qb_numeric_columns:
                 if col in self.qb_data.columns:
@@ -298,11 +346,15 @@ class EnhancedNFLProjector:
     
     def get_available_rushers(self):
         """Get all players with rushing stats in alphabetical order"""
+        if self.rb_data is None or self.qb_data is None:
+            return []
         rushers = self.rb_data['PlayerName'].tolist() + self.qb_data['PlayerName'].tolist()
         return sorted(list(set(rushers)))
     
     def get_available_passers(self):
         """Get all quarterbacks in alphabetical order"""
+        if self.qb_data is None:
+            return []
         return sorted(self.qb_data['PlayerName'].tolist())
     
     def get_available_teams(self):
@@ -341,10 +393,18 @@ def main():
         
         with col1:
             available_rushers = projector.get_available_rushers()
-            rusher_name = st.selectbox("Select Rusher", available_rushers, key="rusher")
+            if not available_rushers:
+                st.error("No rusher data available. Please check your RB and QB CSV files.")
+                rusher_name = st.selectbox("Select Rusher", [""], key="rusher")
+            else:
+                rusher_name = st.selectbox("Select Rusher", available_rushers, key="rusher")
             
             available_teams = projector.get_available_teams()
-            opponent_team_rush = st.selectbox("Select Opponent Team", available_teams, key="rush_opponent")
+            if not available_teams:
+                st.error("No team data available. Please check your defense JSON file.")
+                opponent_team_rush = st.selectbox("Select Opponent Team", [""], key="rush_opponent")
+            else:
+                opponent_team_rush = st.selectbox("Select Opponent Team", available_teams, key="rush_opponent")
             
             games_played_rush = st.number_input("Games Played This Season", min_value=1, max_value=17, value=9, key="rush_games")
         
@@ -417,10 +477,18 @@ def main():
         
         with col1:
             available_passers = projector.get_available_passers()
-            qb_name = st.selectbox("Select Quarterback", available_passers, key="qb")
+            if not available_passers:
+                st.error("No QB data available. Please check your QB CSV file.")
+                qb_name = st.selectbox("Select Quarterback", [""], key="qb")
+            else:
+                qb_name = st.selectbox("Select Quarterback", available_passers, key="qb")
             
             available_teams = projector.get_available_teams()
-            opponent_team_qb = st.selectbox("Select Opponent Team", available_teams, key="qb_opponent")
+            if not available_teams:
+                st.error("No team data available. Please check your defense JSON file.")
+                opponent_team_qb = st.selectbox("Select Opponent Team", [""], key="qb_opponent")
+            else:
+                opponent_team_qb = st.selectbox("Select Opponent Team", available_teams, key="qb_opponent")
             
             games_played_qb = st.number_input("Games Played This Season", min_value=1, max_value=17, value=9, key="qb_games")
         
