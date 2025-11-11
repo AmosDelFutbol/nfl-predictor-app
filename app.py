@@ -468,13 +468,15 @@ class NFLPredictor:
     def load_data(self):
         """Load schedule and odds data with SOS integration"""
         try:
-            # Load schedule
+            # Load schedule - UPDATED FILE NAME
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-                self.schedule = pd.DataFrame(schedule_data['Week 10'])
+                # Get the first week available (you might want to make this dynamic)
+                first_week = list(schedule_data.keys())[0]
+                self.schedule = pd.DataFrame(schedule_data[first_week])
             
-            # Load odds
-            with open('week_11_odds.json', 'r') as f:
+            # Load odds - UPDATED FILE NAME
+            with open('odds.json', 'r') as f:
                 odds_data = json.load(f)
                 self.odds_data = pd.DataFrame(odds_data)
             
