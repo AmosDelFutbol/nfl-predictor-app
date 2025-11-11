@@ -74,6 +74,13 @@ st.markdown("""
         margin: 1rem 0;
         border-left: 4px solid #60A5FA;
     }
+    .odds-card {
+        background: #FEF3C7;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-left: 4px solid #D97706;
+    }
     .projection-item {
         margin: 1rem 0;
         padding: 0.75rem;
@@ -107,6 +114,12 @@ st.markdown("""
         color: #059669;
         margin-left: 0.5rem;
     }
+    .vegas-odds {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #DC2626;
+        margin-left: 0.5rem;
+    }
     .section-title {
         font-size: 1.3rem;
         font-weight: 700;
@@ -129,6 +142,26 @@ st.markdown("""
     .vegas-value {
         font-weight: 600;
         color: #DC2626;
+    }
+    .prediction-bubble {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1rem 1.5rem;
+        border-radius: 25px;
+        font-weight: 600;
+        text-align: center;
+        margin: 0.5rem 0;
+        display: inline-block;
+        min-width: 120px;
+    }
+    .confidence-high {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    }
+    .confidence-medium {
+        background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    }
+    .confidence-low {
+        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -508,151 +541,102 @@ class NFLPredictor:
         """Convert full team name to abbreviation"""
         return self.team_mapping.get(full_name, full_name)
     
-    def create_sample_schedule(self):
-        """Create sample schedule data"""
-        sample_games = [
-            {'home': 'Kansas City Chiefs', 'away': 'Philadelphia Eagles', 'date': '2024-11-15'},
-            {'home': 'San Francisco 49ers', 'away': 'Dallas Cowboys', 'date': '2024-11-15'},
-            {'home': 'Buffalo Bills', 'away': 'Miami Dolphins', 'date': '2024-11-15'},
-            {'home': 'Baltimore Ravens', 'away': 'Cincinnati Bengals', 'date': '2024-11-15'},
-            {'home': 'Detroit Lions', 'away': 'Green Bay Packers', 'date': '2024-11-15'},
-            {'home': 'Los Angeles Rams', 'away': 'Seattle Seahawks', 'date': '2024-11-15'}
-        ]
-        self.schedule = pd.DataFrame(sample_games)
+    def load_schedule_data(self):
+        """Load schedule data from schedule.json"""
+        try:
+            with open('schedule.json', 'r') as f:
+                schedule_data = json.load(f)
+            
+            # Handle different schedule formats
+            if isinstance(schedule_data, dict):
+                if 'games' in schedule_data:
+                    self.schedule = pd.DataFrame(schedule_data['games'])
+                elif 'week' in schedule_data:
+                    self.schedule = pd.DataFrame(schedule_data['week'])
+                else:
+                    # Assume it's a dictionary with game data
+                    self.schedule = pd.DataFrame([schedule_data])
+            else:
+                self.schedule = pd.DataFrame(schedule_data)
+                
+            st.success(f"✅ Loaded {len(self.schedule)} games from schedule")
+            return True
+            
+        except Exception as e:
+            st.error(f"❌ Failed to load schedule: {e}")
+            return False
     
-    def create_sample_odds(self):
-        """Create sample odds data"""
-        sample_odds = [
-            {
-                'home_team': 'Kansas City Chiefs',
-                'away_team': 'Philadelphia Eagles', 
-                'market': 'h2h',
-                'label': 'Kansas City Chiefs',
-                'price': -150
-            },
-            {
-                'home_team': 'Kansas City Chiefs',
-                'away_team': 'Philadelphia Eagles',
-                'market': 'h2h', 
-                'label': 'Philadelphia Eagles',
-                'price': +130
-            },
-            {
-                'home_team': 'Kansas City Chiefs',
-                'away_team': 'Philadelphia Eagles',
-                'market': 'spreads',
-                'label': 'Kansas City Chiefs',
-                'point': -3.5,
-                'price': -110
-            },
-            {
-                'home_team': 'Kansas City Chiefs',
-                'away_team': 'Philadelphia Eagles',
-                'market': 'totals',
-                'label': 'Over',
-                'point': 48.5,
-                'price': -110
-            },
-            {
-                'home_team': 'Kansas City Chiefs',
-                'away_team': 'Philadelphia Eagles',
-                'market': 'totals',
-                'label': 'Under', 
-                'point': 48.5,
-                'price': -110
-            }
-        ]
-        self.odds_data = pd.DataFrame(sample_odds)
+    def load_odds_data(self):
+        """Load odds data from odds.json"""
+        try:
+            with open('odds.json', 'r') as f:
+                odds_data = json.load(f)
+            
+            # Handle different odds formats
+            if isinstance(odds_data, dict):
+                if 'odds' in odds_data:
+                    self.odds_data = pd.DataFrame(odds_data['odds'])
+                else:
+                    self.odds_data = pd.DataFrame([odds_data])
+            else:
+                self.odds_data = pd.DataFrame(odds_data)
+                
+            st.success(f"✅ Loaded {len(self.odds_data)} odds entries")
+            return True
+            
+        except Exception as e:
+            st.error(f"❌ Failed to load odds: {e}")
+            return False
     
     def load_data(self):
         """Load schedule and odds data with SOS integration"""
-        try:
-            # Try to load schedule
-            schedule_loaded = False
-            for file in ['schedule.json', 'data/schedule.json']:
-                try:
-                    with open(file, 'r') as f:
-                        schedule_data = json.load(f)
-                    # Handle different schedule formats
-                    if isinstance(schedule_data, dict):
-                        if 'weeks' in schedule_data:
-                            # Get first week
-                            first_week = list(schedule_data['weeks'].keys())[0]
-                            self.schedule = pd.DataFrame(schedule_data['weeks'][first_week])
-                        else:
-                            first_key = list(schedule_data.keys())[0]
-                            self.schedule = pd.DataFrame(schedule_data[first_key])
-                    else:
-                        self.schedule = pd.DataFrame(schedule_data)
-                    schedule_loaded = True
-                    break
-                except FileNotFoundError:
-                    continue
-            
-            if not schedule_loaded:
-                st.warning("⚠️ Schedule data not found. Using sample data.")
-                self.create_sample_schedule()
-            
-            # Try to load odds
-            odds_loaded = False
-            for file in ['odds.json', 'data/odds.json']:
-                try:
-                    with open(file, 'r') as f:
-                        odds_data = json.load(f)
-                    self.odds_data = pd.DataFrame(odds_data)
-                    odds_loaded = True
-                    break
-                except FileNotFoundError:
-                    continue
-            
-            if not odds_loaded:
-                st.warning("⚠️ Odds data not found. Using sample data.")
-                self.create_sample_odds()
-            
-            # Load SOS data
-            sos_data = self.load_sos_data()
-            
-            # Load weather integration
-            self.weather_predictor.load_data()
+        # Load schedule data
+        if not self.load_schedule_data():
+            st.error("Failed to load schedule data")
+            return False
+        
+        # Load odds data
+        if not self.load_odds_data():
+            st.warning("⚠️ Odds data not available, continuing without Vegas odds")
+        
+        # Load SOS data
+        sos_data = self.load_sos_data()
+        
+        # Load weather integration
+        self.weather_predictor.load_data()
 
-            # Create default team stats with SOS
-            default_stats = {
-                'KC': [0.75, 28.5, 19.2, 0.5], 'BUF': [0.65, 26.8, 21.1, 0.5], 'SF': [0.80, 30.1, 18.5, 0.5],
-                'PHI': [0.70, 27.3, 20.8, 0.5], 'DAL': [0.68, 26.9, 21.3, 0.5], 'BAL': [0.72, 27.8, 19.8, 0.5],
-                'MIA': [0.66, 29.2, 23.1, 0.5], 'CIN': [0.62, 25.7, 22.4, 0.5], 'GB': [0.58, 24.3, 23.7, 0.5],
-                'DET': [0.64, 26.1, 22.9, 0.5], 'LAR': [0.59, 25.8, 23.5, 0.5], 'SEA': [0.55, 24.2, 24.8, 0.5],
-                'LV': [0.45, 21.8, 25.9, 0.5], 'DEN': [0.52, 23.1, 24.2, 0.5], 'LAC': [0.57, 25.3, 24.1, 0.5],
-                'NE': [0.35, 18.9, 27.3, 0.5], 'NYJ': [0.42, 20.5, 26.1, 0.5], 'CHI': [0.48, 22.7, 25.3, 0.5],
-                'MIN': [0.53, 24.8, 23.9, 0.5], 'NO': [0.51, 23.5, 24.4, 0.5], 'ATL': [0.49, 22.9, 24.7, 0.5],
-                'CAR': [0.30, 17.8, 28.5, 0.5], 'JAX': [0.56, 24.6, 23.8, 0.5], 'IND': [0.54, 24.1, 24.0, 0.5],
-                'HOU': [0.50, 23.3, 24.5, 0.5], 'TEN': [0.47, 22.4, 25.1, 0.5], 'CLE': [0.61, 25.2, 22.6, 0.5],
-                'PIT': [0.58, 23.9, 23.4, 0.5], 'NYG': [0.40, 19.8, 26.8, 0.5], 'WAS': [0.43, 21.2, 26.3, 0.5],
-                'ARI': [0.46, 22.1, 25.6, 0.5], 'TB': [0.55, 24.5, 24.2, 0.5]
-            }
+        # Create default team stats with SOS
+        default_stats = {
+            'KC': [0.75, 28.5, 19.2, 0.5], 'BUF': [0.65, 26.8, 21.1, 0.5], 'SF': [0.80, 30.1, 18.5, 0.5],
+            'PHI': [0.70, 27.3, 20.8, 0.5], 'DAL': [0.68, 26.9, 21.3, 0.5], 'BAL': [0.72, 27.8, 19.8, 0.5],
+            'MIA': [0.66, 29.2, 23.1, 0.5], 'CIN': [0.62, 25.7, 22.4, 0.5], 'GB': [0.58, 24.3, 23.7, 0.5],
+            'DET': [0.64, 26.1, 22.9, 0.5], 'LAR': [0.59, 25.8, 23.5, 0.5], 'SEA': [0.55, 24.2, 24.8, 0.5],
+            'LV': [0.45, 21.8, 25.9, 0.5], 'DEN': [0.52, 23.1, 24.2, 0.5], 'LAC': [0.57, 25.3, 24.1, 0.5],
+            'NE': [0.35, 18.9, 27.3, 0.5], 'NYJ': [0.42, 20.5, 26.1, 0.5], 'CHI': [0.48, 22.7, 25.3, 0.5],
+            'MIN': [0.53, 24.8, 23.9, 0.5], 'NO': [0.51, 23.5, 24.4, 0.5], 'ATL': [0.49, 22.9, 24.7, 0.5],
+            'CAR': [0.30, 17.8, 28.5, 0.5], 'JAX': [0.56, 24.6, 23.8, 0.5], 'IND': [0.54, 24.1, 24.0, 0.5],
+            'HOU': [0.50, 23.3, 24.5, 0.5], 'TEN': [0.47, 22.4, 25.1, 0.5], 'CLE': [0.61, 25.2, 22.6, 0.5],
+            'PIT': [0.58, 23.9, 23.4, 0.5], 'NYG': [0.40, 19.8, 26.8, 0.5], 'WAS': [0.43, 21.2, 26.3, 0.5],
+            'ARI': [0.46, 22.1, 25.6, 0.5], 'TB': [0.55, 24.5, 24.2, 0.5]
+        }
+        
+        # Integrate SOS into team stats if available
+        for team_abbr in default_stats.keys():
+            # Find full team name
+            full_name = None
+            for full, abbr in self.team_mapping.items():
+                if abbr == team_abbr:
+                    full_name = full
+                    break
             
-            # Integrate SOS into team stats if available
-            for team_abbr in default_stats.keys():
-                # Find full team name
-                full_name = None
-                for full, abbr in self.team_mapping.items():
-                    if abbr == team_abbr:
-                        full_name = full
-                        break
-                
-                if full_name and full_name in sos_data:
-                    sos_rating = sos_data[full_name].get('combined_sos', 0.5)
-                    # Update SOS in team stats
-                    default_stats[team_abbr][3] = sos_rating
-            
-            self.team_stats = default_stats
-            
-            return True
-        except Exception as e:
-            st.error(f"❌ Error loading data: {e}")
-            # Create minimal data as fallback
-            self.create_sample_schedule()
-            self.create_sample_odds()
-            return True
+            if full_name and full_name in sos_data:
+                sos_rating = sos_data[full_name].get('combined_sos', 0.5)
+                # Update SOS in team stats
+                default_stats[team_abbr][3] = sos_rating
+        
+        self.team_stats = default_stats
+        
+        return True
     
     def get_game_odds(self, home_team, away_team, home_full, away_full):
         """Aggregate all odds for a specific game"""
@@ -664,6 +648,13 @@ class NFLPredictor:
             (self.odds_data['home_team'] == home_full) & 
             (self.odds_data['away_team'] == away_full)
         ]
+        
+        if len(game_odds_rows) == 0:
+            # Try with abbreviations
+            game_odds_rows = self.odds_data[
+                (self.odds_data['home_team'] == home_team) & 
+                (self.odds_data['away_team'] == away_team)
+            ]
         
         if len(game_odds_rows) == 0:
             return None
@@ -688,13 +679,13 @@ class NFLPredictor:
             point = row.get('point', None)
             
             if market == 'h2h':
-                if label == home_full:
+                if label == home_full or label == home_team:
                     odds['home_moneyline'] = price
-                elif label == away_full:
+                elif label == away_full or label == away_team:
                     odds['away_moneyline'] = price
             
             elif market == 'spreads':
-                if label == home_full:
+                if label == home_full or label == home_team:
                     odds['spread'] = point
                     odds['spread_odds'] = price
             
@@ -732,7 +723,6 @@ class NFLPredictor:
             home_win_prob = probabilities[1]
             return home_win_prob
         except Exception as e:
-            st.error(f"Prediction error: {e}")
             # Fallback prediction
             home_win_prob = 0.5 + (home_stats[0] - away_stats[0]) * 0.3
             return max(0.1, min(0.9, home_win_prob))
@@ -808,6 +798,9 @@ class NFLPredictor:
 
 def calculate_cover_probability(model_spread, vegas_spread):
     """Calculate probability of covering the spread"""
+    if vegas_spread is None:
+        return 50
+        
     # Simple heuristic: the closer model spread is to Vegas spread, the higher the confidence
     spread_diff = abs(model_spread - vegas_spread)
     if spread_diff <= 1:
@@ -821,6 +814,9 @@ def calculate_cover_probability(model_spread, vegas_spread):
 
 def calculate_over_probability(model_total, vegas_total):
     """Calculate probability of over hitting"""
+    if vegas_total is None:
+        return 50
+        
     # Simple heuristic based on difference between model and Vegas total
     total_diff = model_total - vegas_total
     if total_diff >= 3:
@@ -833,6 +829,15 @@ def calculate_over_probability(model_total, vegas_total):
         return 40  # Lean under
     else:
         return 30  # Strong under
+
+def get_confidence_class(probability):
+    """Get CSS class for confidence level"""
+    if probability >= 70:
+        return "confidence-high"
+    elif probability >= 60:
+        return "confidence-medium"
+    else:
+        return "confidence-low"
 
 def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data):
     """Create a professional game card matching the desired layout"""
@@ -848,52 +853,65 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
         # Score Header (like "Broncos 24 @ 21 Raiders")
         st.markdown(f'<div class="score-header">{away_team} {int(away_score)} @ {int(home_score)} {home_team}</div>', unsafe_allow_html=True)
         
-        # Two Column Layout
-        col1, col2 = st.columns([1, 1])
+        # Three Column Layout
+        col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
-            # Projections Card
+            # Model Projections Card
             st.markdown('<div class="projections-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Projections</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📊 Model Projections</div>', unsafe_allow_html=True)
             
-            # Winner Projection
+            # Winner Projection in Bubble
             model_winner = home_full if home_win_prob > 0.5 else away_full
             winner_abbr = home_team if home_win_prob > 0.5 else away_team
-            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-            st.markdown(f'**Winner:** {model_winner}')
-            if game_odds:
-                home_ml = game_odds.get('home_moneyline', 'N/A')
-                away_ml = game_odds.get('away_moneyline', 'N/A')
-                if home_win_prob > 0.5:
-                    st.markdown(f'<span class="odds-value">{home_team}: {home_ml} | {away_team}: {away_ml}</span>', unsafe_allow_html=True)
-                else:
-                    st.markdown(f'<span class="odds-value">{away_team}: {away_ml} | {home_team}: {home_ml}</span>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
+            confidence_class = get_confidence_class(win_prob_pct)
             
-            # Spread Projection
+            st.markdown(f'<div class="prediction-bubble {confidence_class}">🏈 {winner_abbr} to Win</div>', unsafe_allow_html=True)
+            st.markdown(f'**Probability:** {win_prob_pct:.1f}%')
+            
+            # Spread Projection in Bubble
             model_spread = predictor.convert_prob_to_spread(home_win_prob)
-            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-            st.markdown(f'**Spread:** {model_spread:.1f}')
-            if game_odds and game_odds.get('spread'):
-                vegas_spread = game_odds['spread']
-                st.markdown(f'<span class="odds-value">Spread: {vegas_spread}</span>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="prediction-bubble">📈 Spread: {model_spread:+.1f}</div>', unsafe_allow_html=True)
             
-            # Totals Projection
+            # Totals Projection in Bubble
             model_total = predictor.predict_total_points(home_team, away_team)
-            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-            st.markdown(f'**Totals:** {model_total:.1f}')
-            if game_odds and game_odds.get('total'):
-                vegas_total = game_odds['total']
-                st.markdown(f'<span class="odds-value">{vegas_total}</span>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="prediction-bubble">🎯 Total: {model_total:.1f}</div>', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)  # Close projections-card
+            
+        with col2:
+            # Vegas Odds Card
+            st.markdown('<div class="odds-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">🎰 Vegas Odds</div>', unsafe_allow_html=True)
+            
+            if game_odds:
+                # Moneyline
+                if game_odds.get('home_moneyline') and game_odds.get('away_moneyline'):
+                    st.markdown(f'**Moneyline:**')
+                    st.markdown(f'`{home_team}: {game_odds["home_moneyline"]:+} | {away_team}: {game_odds["away_moneyline"]:+}`')
+                
+                # Spread
+                if game_odds.get('spread'):
+                    spread_odds = game_odds.get('spread_odds', '')
+                    st.markdown(f'**Spread:**')
+                    st.markdown(f'`{game_odds["spread"]:+.1f} ({spread_odds})`')
+                
+                # Total
+                if game_odds.get('total'):
+                    over_odds = game_odds.get('over_odds', '')
+                    under_odds = game_odds.get('under_odds', '')
+                    st.markdown(f'**Total:**')
+                    st.markdown(f'`{game_odds["total"]} (O: {over_odds} | U: {under_odds})`')
+            else:
+                st.markdown('*Odds not available*')
+            
+            st.markdown('</div>', unsafe_allow_html=True)  # Close odds-card
             
             # Weather Card
             if weather_data and weather_data.get('success'):
                 st.markdown('<div class="weather-card">', unsafe_allow_html=True)
-                st.markdown('<div class="section-title">Weather</div>', unsafe_allow_html=True)
+                st.markdown('<div class="section-title">🌤️ Weather</div>', unsafe_allow_html=True)
                 
                 stadium_name = predictor.weather_predictor.weather_api.team_stadiums.get(home_full, "Unknown Stadium")
                 stadium_info = predictor.weather_predictor.weather_api.stadiums.get(stadium_name, {})
@@ -907,15 +925,14 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
                 
                 st.markdown('</div>', unsafe_allow_html=True)  # Close weather-card
         
-        with col2:
+        with col3:
             # Final Projections Card
             st.markdown('<div class="final-projections-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">Final Projections</div>', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">🎯 Betting Recommendations</div>', unsafe_allow_html=True)
             
             # Winner Pick with Probability
             st.markdown('<div class="projection-item">', unsafe_allow_html=True)
             st.markdown(f'**Winner:** {model_winner}')
-            win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
             st.markdown(f'<div class="probability-badge">WIN Probability: {win_prob_pct:.0f}%</div>', unsafe_allow_html=True)
             st.markdown('</div>', unsafe_allow_html=True)
             
@@ -937,10 +954,11 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
                         ats_pick = f"{home_team} to cover"
                 
                 cover_prob = calculate_cover_probability(model_spread, vegas_spread)
+                confidence_class = get_confidence_class(cover_prob)
                 
                 st.markdown('<div class="projection-item">', unsafe_allow_html=True)
                 st.markdown(f'**Spread:** {ats_pick}')
-                st.markdown(f'<div class="confidence-badge">{cover_prob}%</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="confidence-badge {confidence_class}">{cover_prob}% Confidence</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Totals Pick
@@ -949,17 +967,19 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
                 model_total = predictor.predict_total_points(home_team, away_team)
                 
                 if model_total > vegas_total:
-                    totals_pick = "Lean Over"
+                    totals_pick = "Over"
                 else:
-                    totals_pick = "Lean Under"
+                    totals_pick = "Under"
                 
                 over_prob = calculate_over_probability(model_total, vegas_total)
-                if totals_pick == "Lean Under":
+                if totals_pick == "Under":
                     over_prob = 100 - over_prob
                 
+                confidence_class = get_confidence_class(over_prob)
+                
                 st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-                st.markdown(f'**Totals:** {totals_pick}')
-                st.markdown(f'<div class="confidence-badge">{over_prob}%</div>', unsafe_allow_html=True)
+                st.markdown(f'**Total:** {totals_pick} {vegas_total}')
+                st.markdown(f'<div class="confidence-badge {confidence_class}">{over_prob}% Confidence</div>', unsafe_allow_html=True)
                 st.markdown('</div>', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)  # Close final-projections-card
@@ -967,9 +987,9 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
         st.markdown('</div>', unsafe_allow_html=True)  # Close game-card
 
 def main():
-    # Header
+    # Header with professional tagline
     st.markdown('<div class="main-header">NFL Prediction Model</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Week 10 • Model Projections vs Vegas Odds</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">🏈 Where Data Meets Destiny • Model Intelligence vs Vegas Wisdom</div>', unsafe_allow_html=True)
     
     # Initialize predictor with loading state
     with st.spinner('Loading NFL predictions...'):
@@ -998,7 +1018,7 @@ def main():
     for _, game in predictor.schedule.iterrows():
         home_full = game['home']
         away_full = game['away']
-        game_date = game['date']
+        game_date = game.get('date', '2024-11-15')  # Default date if not provided
         
         home_team = predictor.get_team_abbreviation(home_full)
         away_team = predictor.get_team_abbreviation(away_full)
