@@ -541,10 +541,10 @@ class NFLPredictor:
         """Convert full team name to abbreviation"""
         return self.team_mapping.get(full_name, full_name)
     
-    def find_column_name(self, df, possible_names):
-        """Find the correct column name from a list of possibilities"""
+    def find_column_name(self, series, possible_names):
+        """Find the correct column name from a list of possibilities in a Series"""
         for name in possible_names:
-            if name in df.columns:
+            if name in series.index:
                 return name
         return None
     
@@ -656,14 +656,112 @@ class NFLPredictor:
         date_col = self.find_column_name(game, ['date', 'game_date', 'Date', 'gameDate'])
         
         if home_col is None or away_col is None:
-            st.error(f"❌ Could not find team columns in game data. Available columns: {list(game.keys())}")
+            st.error(f"❌ Could not find team columns in game data. Available columns: {list(game.index)}")
             return None, None, None
         
         home_full = game[home_col]
         away_full = game[away_col]
-        game_date = game[date_col] if date_col else '2024-11-15'
+        game_date = game[date_col] if date_col and pd.notna(game[date_col]) else '2024-11-15'
         
         return home_full, away_full, game_date
+    
+    def process_odds_data(self):
+        """Process the odds data to match our expected format"""
+        if self.odds_data is None or len(self.odds_data) == 0:
+            return
+        
+        # Debug: Show original odds structure
+        st.write("🔧 Processing odds data...")
+        
+        # Create a new processed odds dataframe
+        processed_odds = []
+        
+        for _, row in self.odds_data.iterrows():
+            home_team = row.get('home_team')
+            away_team = row.get('away_team')
+            market = row.get('market')
+            
+            if not home_team or not away_team or not market:
+                continue
+            
+            # Handle different market types
+            if market == 'h2h':
+                # Moneyline odds
+                label_1 = row.get('label_1')
+                odd_1 = row.get('odd_1')
+                label_2 = row.get('label_2') 
+                odd_2 = row.get('odd_2')
+                
+                if label_1 and odd_1:
+                    processed_odds.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'market': 'h2h',
+                        'label': label_1,
+                        'price': odd_1
+                    })
+                
+                if label_2 and odd_2:
+                    processed_odds.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'market': 'h2h',
+                        'label': label_2,
+                        'price': odd_2
+                    })
+            
+            elif market == 'spreads':
+                # Spread odds
+                label_1 = row.get('label_1')
+                point_1 = row.get('point_1')
+                odd_1 = row.get('odd_1')
+                
+                if label_1 and point_1 is not None:
+                    processed_odds.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'market': 'spreads',
+                        'label': label_1,
+                        'point': point_1,
+                        'price': odd_1
+                    })
+            
+            elif market == 'totals':
+                # Total points odds
+                point_1 = row.get('point_1')
+                label_1 = row.get('label_1')
+                odd_1 = row.get('odd_1')
+                label_2 = row.get('label_2')
+                odd_2 = row.get('odd_2')
+                
+                if point_1 is not None:
+                    if label_1 and odd_1:
+                        processed_odds.append({
+                            'home_team': home_team,
+                            'away_team': away_team,
+                            'market': 'totals',
+                            'label': label_1,
+                            'point': point_1,
+                            'price': odd_1
+                        })
+                    
+                    if label_2 and odd_2:
+                        processed_odds.append({
+                            'home_team': home_team,
+                            'away_team': away_team,
+                            'market': 'totals',
+                            'label': label_2,
+                            'point': point_1,  # Same point value for over/under
+                            'price': odd_2
+                        })
+        
+        # Replace the original odds data with processed data
+        if processed_odds:
+            self.odds_data = pd.DataFrame(processed_odds)
+            st.success(f"✅ Processed {len(self.odds_data)} odds entries")
+        else:
+            st.warning("⚠️ No odds data could be processed")
+            self.odds_data = pd.DataFrame()
     
     def load_data(self):
         """Load schedule and odds data with SOS integration"""
@@ -675,6 +773,9 @@ class NFLPredictor:
         # Load odds data
         if not self.load_odds_data():
             st.warning("⚠️ Odds data not available, continuing without Vegas odds")
+        
+        # Process odds data to standard format
+        self.process_odds_data()
         
         # Load SOS data
         sos_data = self.load_sos_data()
