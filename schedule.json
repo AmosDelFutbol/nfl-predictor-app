@@ -1,0 +1,20 @@
+{
+"Week 11": [
+      {"home": "New England Patriots", "away": "New York Jets", "date": "2025-11-13"},
+      {"home": "Miami Dolphins", "away": "Washington Commanders", "date": "2025-11-16"},
+      {"home": "Atlanta Falcons", "away": "Carolina Panthers", "date": "2025-11-16"},
+      {"home": "Buffalo Bills", "away": "Tampa Bay Buccaneers", "date": "2025-11-16"},
+      {"home": "Jacksonville Jaguars", "away": "Los Angeles Chargers", "date": "2025-11-16"},
+      {"home": "Minnesota Vikings", "away": "Chicago Bears", "date": "2025-11-16"},
+      {"home": "New York Giants", "away": "Green Bay Packers", "date": "2025-11-16"},
+      {"home": "Pittsburgh Steelers", "away": "Cincinnati Bengals", "date": "2025-11-16"},
+      {"home": "Tennessee Titans", "away": "Houston Texans", "date": "2025-11-16"},
+      {"home": "Arizona Cardinals", "away": "San Francisco 49ers", "date": "2025-11-16"},
+      {"home": "Los Angeles Rams", "away": "Seattle Seahawks", "date": "2025-11-16"},
+      {"home": "Cleveland Browns", "away": "Baltimore Ravens", "date": "2025-11-17"},
+      {"home": "Denver Broncos", "away": "Kansas City Chiefs", "date": "2025-11-17"},
+      {"home": "Philadelphia Eagles", "away": "Detroit Lions", "date": "2025-11-17"},
+      {"home": "Las Vegas Raiders", "away": "Dallas Cowboys", "date": "2025-11-17"}    
+]
+}
+
