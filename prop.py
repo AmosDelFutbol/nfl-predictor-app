@@ -1,43 +1,54 @@
 import pandas as pd
 import numpy as np
 import json
+import streamlit as st
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 
 class EnhancedNFLProjector:
-    def __init__(self, rb_file, qb_file, defense_file):
+    def __init__(self):
         """Initialize the enhanced projector with all available data sources"""
-        # Load base data files
-        self.rb_data = pd.read_csv(rb_file)
-        self.qb_data = pd.read_csv(qb_file)
-        self.defense_data = pd.read_csv(defense_file)
-        
-        # Load advanced data from our main model
-        self.elo_data = self._load_elo_data()
-        self.sos_data = self._load_sos_data()
-        self.schedule_data = self._load_schedule_data()
-        self.odds_data = self._load_odds_data()
-        
-        # Clean column names
-        self._clean_data()
-        
-        # Team mapping for consistency
-        self.team_mapping = {
-            'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
-            'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
-            'Cincinnati Bengals': 'CIN', 'Cleveland Browns': 'CLE', 'Dallas Cowboys': 'DAL',
-            'Denver Broncos': 'DEN', 'Detroit Lions': 'DET', 'Green Bay Packers': 'GB',
-            'Houston Texans': 'HOU', 'Indianapolis Colts': 'IND', 'Jacksonville Jaguars': 'JAX',
-            'Kansas City Chiefs': 'KC', 'Las Vegas Raiders': 'LV', 'Los Angeles Chargers': 'LAC',
-            'Los Angeles Rams': 'LAR', 'Miami Dolphins': 'MIA', 'Minnesota Vikings': 'MIN',
-            'New England Patriots': 'NE', 'New Orleans Saints': 'NO', 'New York Giants': 'NYG',
-            'New York Jets': 'NYJ', 'Philadelphia Eagles': 'PHI', 'Pittsburgh Steelers': 'PIT',
-            'San Francisco 49ers': 'SF', 'Seattle Seahawks': 'SEA', 'Tampa Bay Buccaneers': 'TB',
-            'Tennessee Titans': 'TEN', 'Washington Commanders': 'WAS'
-        }
-        
-        print("Enhanced NFL Projector initialized successfully!")
-        print(f"Advanced metrics loaded for {len(self.elo_data)} teams")
+        try:
+            # Load base data files from GitHub
+            self.rb_data = pd.read_csv('RB_season.csv')
+            self.qb_data = pd.read_csv('QB_season.csv')
+            self.defense_data = pd.read_csv('2025_NFL_DEFENSE.csv')
+            
+            # Load advanced data from our main model
+            self.elo_data = self._load_elo_data()
+            self.sos_data = self._load_sos_data()
+            self.schedule_data = self._load_schedule_data()
+            self.odds_data = self._load_odds_data()
+            
+            # Clean column names
+            self._clean_data()
+            
+            # Team mapping for consistency
+            self.team_mapping = {
+                'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
+                'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
+                'Cincinnati Bengals': 'CIN', 'Cleveland Browns': 'CLE', 'Dallas Cowboys': 'DAL',
+                'Denver Broncos': 'DEN', 'Detroit Lions': 'DET', 'Green Bay Packers': 'GB',
+                'Houston Texans': 'HOU', 'Indianapolis Colts': 'IND', 'Jacksonville Jaguars': 'JAX',
+                'Kansas City Chiefs': 'KC', 'Las Vegas Raiders': 'LV', 'Los Angeles Chargers': 'LAC',
+                'Los Angeles Rams': 'LAR', 'Miami Dolphins': 'MIA', 'Minnesota Vikings': 'MIN',
+                'New England Patriots': 'NE', 'New Orleans Saints': 'NO', 'New York Giants': 'NYG',
+                'New York Jets': 'NYJ', 'Philadelphia Eagles': 'PHI', 'Pittsburgh Steelers': 'PIT',
+                'San Francisco 49ers': 'SF', 'Seattle Seahawks': 'SEA', 'Tampa Bay Buccaneers': 'TB',
+                'Tennessee Titans': 'TEN', 'Washington Commanders': 'WAS'
+            }
+            
+            st.success("✅ Enhanced NFL Projector initialized successfully!")
+            st.info(f"Advanced metrics loaded for {len(self.elo_data)} teams")
+            
+        except Exception as e:
+            st.error(f"❌ Error initializing projector: {e}")
+            # Create empty dataframes to prevent further errors
+            self.rb_data = pd.DataFrame()
+            self.qb_data = pd.DataFrame()
+            self.defense_data = pd.DataFrame()
+            self.elo_data = {}
+            self.sos_data = {}
         
     def _load_elo_data(self):
         """Load ELO and efficiency metrics"""
@@ -63,7 +74,7 @@ class EnhancedNFLProjector:
                     }
             return elo_data
         except Exception as e:
-            print(f"Warning: Could not load ELO data: {e}")
+            st.warning(f"⚠️ Could not load ELO data: {e}")
             return {}
     
     def _load_sos_data(self):
@@ -73,7 +84,7 @@ class EnhancedNFLProjector:
                 sos_data = json.load(f)
             return sos_data.get('sos_rankings', {})
         except:
-            print("Warning: Could not load SOS data")
+            st.warning("⚠️ Could not load SOS data")
             return {}
     
     def _load_schedule_data(self):
@@ -83,7 +94,7 @@ class EnhancedNFLProjector:
                 schedule_data = json.load(f)
             return schedule_data.get('Week 10', [])
         except:
-            print("Warning: Could not load schedule data")
+            st.warning("⚠️ Could not load schedule data")
             return []
     
     def _load_odds_data(self):
@@ -93,14 +104,17 @@ class EnhancedNFLProjector:
                 odds_data = json.load(f)
             return odds_data
         except:
-            print("Warning: Could not load odds data")
+            st.warning("⚠️ Could not load odds data")
             return []
     
     def _clean_data(self):
         """Clean all dataframes"""
-        self.rb_data.columns = self.rb_data.columns.str.strip()
-        self.qb_data.columns = self.qb_data.columns.str.strip()
-        self.defense_data.columns = self.defense_data.columns.str.strip()
+        if not self.rb_data.empty:
+            self.rb_data.columns = self.rb_data.columns.str.strip()
+        if not self.qb_data.empty:
+            self.qb_data.columns = self.qb_data.columns.str.strip()
+        if not self.defense_data.empty:
+            self.defense_data.columns = self.defense_data.columns.str.strip()
     
     def _get_team_abbreviation_from_name(self, team_name):
         """Convert team name to abbreviation"""
@@ -156,16 +170,6 @@ class EnhancedNFLProjector:
         elif games_played >= 4:
             confidence_score += 0.1
         
-        # Consistency confidence (low variance in performance)
-        if position == 'RB':
-            rush_std = player_stats.get('rush_std', 20)
-            if rush_std < 15:
-                confidence_score += 0.1
-        elif position == 'QB':
-            pass_std = player_stats.get('pass_std', 50)
-            if pass_std < 30:
-                confidence_score += 0.1
-        
         # Matchup confidence (clear strengths/weaknesses)
         elo_diff = game_context['player_team_elo'] - game_context['opponent_team_elo']
         if abs(elo_diff) > 100:
@@ -177,6 +181,9 @@ class EnhancedNFLProjector:
     
     def project_rb_stats(self, rb_name, opponent_team, games_played=9):
         """Enhanced RB projections using advanced metrics"""
+        
+        if self.rb_data.empty:
+            raise ValueError("RB data not loaded")
         
         # Get base data
         rb_row = self.rb_data[self.rb_data['PlayerName'] == rb_name]
@@ -307,6 +314,9 @@ class EnhancedNFLProjector:
     def project_qb_stats(self, qb_name, opponent_team, games_played=9):
         """Enhanced QB projections using advanced metrics"""
         
+        if self.qb_data.empty:
+            raise ValueError("QB data not loaded")
+        
         # Get base data
         qb_row = self.qb_data[self.qb_data['PlayerName'] == qb_name]
         if qb_row.empty:
@@ -429,194 +439,183 @@ class EnhancedNFLProjector:
         return projections, qb_stats, defense_stats, game_context
     
     def get_available_rbs(self):
-        return self.rb_data['PlayerName'].tolist()
+        return self.rb_data['PlayerName'].tolist() if not self.rb_data.empty else []
     
     def get_available_qbs(self):
-        return self.qb_data['PlayerName'].tolist()
+        return self.qb_data['PlayerName'].tolist() if not self.qb_data.empty else []
     
     def get_available_teams(self):
-        return self.defense_data['Team'].tolist()
-    
-    def get_games_played(self, player_name, position):
-        """Get games played with validation"""
-        while True:
-            try:
-                games_input = input(f"How many games has {player_name} played this season? (default: 9): ").strip()
-                if games_input == "":
-                    return 9
-                games = int(games_input)
-                if games < 1 or games > 17:
-                    print("Please enter a number between 1 and 17")
-                    continue
-                return games
-            except ValueError:
-                print("Please enter a valid number")
-    
-    def display_enhanced_rb_projections(self, rb_name, opponent_team):
-        """Display enhanced RB projections with advanced metrics"""
-        try:
-            games_played = self.get_games_played(rb_name, 'RB')
-            projections, rb_stats, defense_stats, game_context = self.project_rb_stats(rb_name, opponent_team, games_played)
-            
-            print(f"\n{'='*70}")
-            print(f"ENHANCED RB PROJECTION: {rb_name} vs {opponent_team}")
-            print(f"{'='*70}")
-            
-            # Basic stats
-            print(f"\n{rb_name} 2025 Season Stats ({games_played} games):")
-            print(f"  Rushing: {rb_stats['RushingYDS']} yards, {rb_stats['RushingTD']} TDs")
-            print(f"  Receiving: {rb_stats['ReceivingYDS']} yards, {rb_stats['ReceivingTD']} TDs, {rb_stats['ReceivingRec']} receptions")
-            print(f"  Per Game: {rb_stats['RushingYDS']/games_played:.1f} rush yds, {rb_stats['ReceivingYDS']/games_played:.1f} rec yds")
-            
-            # Advanced context
-            print(f"\n🎯 ADVANCED GAME CONTEXT:")
-            print(f"  Expected Total: {game_context['expected_total']} points")
-            print(f"  Spread: {game_context['spread']:+.1f}")
-            print(f"  Game Script: {projections['GameScript']}")
-            print(f"  Projection Confidence: {projections['Confidence']:.0%}")
-            
-            print(f"\n{opponent_team} Defense Allowed Per Game:")
-            print(f"  Rushing: {defense_stats['RUSHING YARDS PER GAME ALLOWED']} yards, {defense_stats['RUSHING TD PER GAME ALLOWED']} TDs")
-            print(f"  Passing: {defense_stats['PASSING YARDS ALLOWED']} yards, {defense_stats['PASSING TD ALLOWED']} TDs")
-            
-            print(f"\n📊 ENHANCED PROJECTIONS vs {opponent_team}:")
-            print(f"  Carries: {projections['Carries']:.1f}")
-            print(f"  Rushing Yards: {projections['RushingYards']:.1f}")
-            print(f"  Rushing TDs: {projections['RushingTDs']:.1f}")
-            print(f"  Receptions: {projections['Receptions']:.1f}")
-            print(f"  Receiving Yards: {projections['ReceivingYards']:.1f}")
-            print(f"  Receiving TDs: {projections['ReceivingTDs']:.1f}")
-            print(f"  Fantasy Points (PPR): {projections['FantasyPoints']:.1f}")
-            
-            # Confidence indicator
-            confidence = projections['Confidence']
-            if confidence >= 0.7:
-                confidence_indicator = "🟢 HIGH CONFIDENCE"
-            elif confidence >= 0.5:
-                confidence_indicator = "🟡 MEDIUM CONFIDENCE"
-            else:
-                confidence_indicator = "🔴 LOW CONFIDENCE"
-            
-            print(f"\n{confidence_indicator}")
-            
-        except ValueError as e:
-            print(f"Error: {e}")
-    
-    def display_enhanced_qb_projections(self, qb_name, opponent_team):
-        """Display enhanced QB projections with advanced metrics"""
-        try:
-            games_played = self.get_games_played(qb_name, 'QB')
-            projections, qb_stats, defense_stats, game_context = self.project_qb_stats(qb_name, opponent_team, games_played)
-            
-            print(f"\n{'='*70}")
-            print(f"ENHANCED QB PROJECTION: {qb_name} vs {opponent_team}")
-            print(f"{'='*70}")
-            
-            # Basic stats
-            print(f"\n{qb_name} 2025 Season Stats ({games_played} games):")
-            print(f"  Passing: {qb_stats['PassingYDS']} yards, {qb_stats['PassingTD']} TDs, {qb_stats['PassingInt']} INTs")
-            print(f"  Rushing: {qb_stats['RushingYDS']} yards, {qb_stats['RushingTD']} TDs")
-            print(f"  Per Game: {qb_stats['PassingYDS']/games_played:.1f} pass yds, {qb_stats['RushingYDS']/games_played:.1f} rush yds")
-            
-            # Advanced context
-            print(f"\n🎯 ADVANCED GAME CONTEXT:")
-            print(f"  Expected Total: {game_context['expected_total']} points")
-            print(f"  Spread: {game_context['spread']:+.1f}")
-            print(f"  Game Script: {projections['GameScript']}")
-            print(f"  Projection Confidence: {projections['Confidence']:.0%}")
-            
-            print(f"\n{opponent_team} Defense Allowed Per Game:")
-            print(f"  Passing: {defense_stats['PASSING YARDS ALLOWED']} yards, {defense_stats['PASSING TD ALLOWED']} TDs")
-            print(f"  Rushing: {defense_stats['RUSHING YARDS PER GAME ALLOWED']} yards, {defense_stats['RUSHING TD PER GAME ALLOWED']} TDs")
-            print(f"  Interceptions: {defense_stats['INTERCENTIONS']:.1f}")
-            
-            print(f"\n📊 ENHANCED PROJECTIONS vs {opponent_team}:")
-            print(f"  Pass Attempts: {projections['PassAttempts']:.1f}")
-            print(f"  Completions: {projections['Completions']:.1f}")
-            print(f"  Passing Yards: {projections['PassingYards']:.1f}")
-            print(f"  Passing TDs: {projections['PassingTDs']:.1f}")
-            print(f"  Interceptions: {projections['Interceptions']:.1f}")
-            print(f"  Rushing Yards: {projections['RushingYards']:.1f}")
-            print(f"  Rushing TDs: {projections['RushingTDs']:.1f}")
-            print(f"  Fantasy Points: {projections['FantasyPoints']:.1f}")
-            
-            # Confidence indicator
-            confidence = projections['Confidence']
-            if confidence >= 0.7:
-                confidence_indicator = "🟢 HIGH CONFIDENCE"
-            elif confidence >= 0.5:
-                confidence_indicator = "🟡 MEDIUM CONFIDENCE"
-            else:
-                confidence_indicator = "🔴 LOW CONFIDENCE"
-            
-            print(f"\n{confidence_indicator}")
-            
-        except ValueError as e:
-            print(f"Error: {e}")
+        return self.defense_data['Team'].tolist() if not self.defense_data.empty else []
 
 def main():
-    # Initialize the enhanced projector
-    projector = EnhancedNFLProjector(
-        rb_file='C:/Users/xboxl/OneDrive/Desktop/Main/NFL/NFLHenryModel/nfl_data/MainFiles/RB_season.csv',
-        qb_file='C:/Users/xboxl/OneDrive/Desktop/Main/NFL/NFLHenryModel/nfl_data/MainFiles/QB_season.csv', 
-        defense_file='C:/Users/xboxl/OneDrive/Desktop/Main/NFL/NFLHenryModel/nfl_data/MainFiles/2025_NFL_DEFENSE.csv'
+    st.set_page_config(
+        page_title="NFL Player Projections",
+        page_icon="🏈",
+        layout="wide"
     )
     
-    while True:
-        print(f"\n{'='*50}")
-        print("ENHANCED NFL PLAYER PROJECTION TOOL")
-        print("Now with Advanced Metrics & Game Context")
-        print(f"{'='*50}")
-        
-        # Show available options
+    st.title("🏈 Enhanced NFL Player Projections")
+    st.markdown("### Advanced Player Stats Projections with ELO & Efficiency Metrics")
+    
+    # Initialize the projector
+    if 'projector' not in st.session_state:
+        st.session_state.projector = EnhancedNFLProjector()
+    
+    projector = st.session_state.projector
+    
+    # Check if data loaded successfully
+    if projector.rb_data.empty or projector.qb_data.empty or projector.defense_data.empty:
+        st.error("❌ Could not load player data files. Please ensure RB_season.csv, QB_season.csv, and 2025_NFL_DEFENSE.csv are in your repository.")
+        return
+    
+    # Sidebar for player selection
+    st.sidebar.header("Player Selection")
+    
+    position = st.sidebar.selectbox("Select Position", ["Running Back", "Quarterback"])
+    
+    if position == "Running Back":
         available_rbs = projector.get_available_rbs()
+        if available_rbs:
+            rb_name = st.sidebar.selectbox("Select Running Back", available_rbs)
+            available_teams = projector.get_available_teams()
+            opponent_team = st.sidebar.selectbox("Select Opponent Team", available_teams)
+            games_played = st.sidebar.number_input("Games Played This Season", min_value=1, max_value=17, value=9)
+            
+            if st.sidebar.button("Generate RB Projection"):
+                try:
+                    projections, rb_stats, defense_stats, game_context = projector.project_rb_stats(
+                        rb_name, opponent_team, games_played
+                    )
+                    
+                    # Display results
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader(f"📊 {rb_name} Projection vs {opponent_team}")
+                        
+                        # Confidence indicator
+                        confidence = projections['Confidence']
+                        if confidence >= 0.7:
+                            st.success(f"🟢 High Confidence Projection ({confidence:.0%})")
+                        elif confidence >= 0.5:
+                            st.warning(f"🟡 Medium Confidence Projection ({confidence:.0%})")
+                        else:
+                            st.error(f"🔴 Low Confidence Projection ({confidence:.0%})")
+                        
+                        # Game context
+                        st.write(f"**Game Context:**")
+                        st.write(f"- Expected Total: {projections['ExpectedGameTotal']} points")
+                        st.write(f"- Game Script: {projections['GameScript']}")
+                        st.write(f"- Spread: {game_context['spread']:+.1f}")
+                    
+                    with col2:
+                        st.subheader("Projected Stats")
+                        
+                        # Create metrics
+                        col2a, col2b, col2c = st.columns(3)
+                        
+                        with col2a:
+                            st.metric("Rushing Yards", f"{projections['RushingYards']:.1f}")
+                            st.metric("Rushing TDs", f"{projections['RushingTDs']:.1f}")
+                            st.metric("Carries", f"{projections['Carries']:.1f}")
+                        
+                        with col2b:
+                            st.metric("Receiving Yards", f"{projections['ReceivingYards']:.1f}")
+                            st.metric("Receiving TDs", f"{projections['ReceivingTDs']:.1f}")
+                            st.metric("Receptions", f"{projections['Receptions']:.1f}")
+                        
+                        with col2c:
+                            st.metric("Fantasy Points", f"{projections['FantasyPoints']:.1f}")
+                    
+                    # Player stats and defense stats
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        st.subheader(f"{rb_name} Season Stats")
+                        st.write(f"**Rushing:** {rb_stats['RushingYDS']} yards, {rb_stats['RushingTD']} TDs")
+                        st.write(f"**Receiving:** {rb_stats['ReceivingYDS']} yards, {rb_stats['ReceivingTD']} TDs, {rb_stats['ReceivingRec']} receptions")
+                        st.write(f"**Per Game:** {rb_stats['RushingYDS']/games_played:.1f} rush yds, {rb_stats['ReceivingYDS']/games_played:.1f} rec yds")
+                    
+                    with col4:
+                        st.subheader(f"{opponent_team} Defense")
+                        st.write(f"**Rushing Allowed:** {defense_stats['RUSHING YARDS PER GAME ALLOWED']} yds/game, {defense_stats['RUSHING TD PER GAME ALLOWED']} TDs/game")
+                        st.write(f"**Passing Allowed:** {defense_stats['PASSING YARDS ALLOWED']} yds/game, {defense_stats['PASSING TD ALLOWED']} TDs/game")
+                        
+                except ValueError as e:
+                    st.error(f"Error: {e}")
+    
+    else:  # Quarterback
         available_qbs = projector.get_available_qbs()
-        available_teams = projector.get_available_teams()
-        
-        print(f"\nAvailable RBs ({len(available_rbs)}):")
-        for i, rb in enumerate(available_rbs[:8]):
-            print(f"  {i+1}. {rb}")
-        if len(available_rbs) > 8:
-            print(f"  ... and {len(available_rbs) - 8} more")
-        
-        print(f"\nAvailable QBs ({len(available_qbs)}):")
-        for i, qb in enumerate(available_qbs[:8]):
-            print(f"  {i+1}. {qb}")
-        if len(available_qbs) > 8:
-            print(f"  ... and {len(available_qbs) - 8} more")
-        
-        print(f"\nAvailable Teams ({len(available_teams)}):")
-        for i, team in enumerate(available_teams):
-            print(f"  {i+1}. {team}")
-        
-        # Get position choice
-        print(f"\nChoose position:")
-        print("  1. RB (Running Back) - Enhanced Projections")
-        print("  2. QB (Quarterback) - Enhanced Projections")
-        position_choice = input("Enter choice (1 or 2): ").strip()
-        
-        if position_choice == '1':
-            player_name = input("Enter RB name (or 'quit' to exit): ").strip()
-            if player_name.lower() == 'quit':
-                return
-            opponent_team = input("Enter opponent team: ").strip()
-            projector.display_enhanced_rb_projections(player_name, opponent_team)
-        
-        elif position_choice == '2':
-            player_name = input("Enter QB name (or 'quit' to exit): ").strip()
-            if player_name.lower() == 'quit':
-                return
-            opponent_team = input("Enter opponent team: ").strip()
-            projector.display_enhanced_qb_projections(player_name, opponent_team)
-        
-        else:
-            print("Invalid choice. Please enter 1 or 2.")
-            continue
-        
-        # Ask to continue
-        continue_choice = input("\nMake another projection? (y/n): ").strip().lower()
-        if continue_choice != 'y':
-            break
+        if available_qbs:
+            qb_name = st.sidebar.selectbox("Select Quarterback", available_qbs)
+            available_teams = projector.get_available_teams()
+            opponent_team = st.sidebar.selectbox("Select Opponent Team", available_teams)
+            games_played = st.sidebar.number_input("Games Played This Season", min_value=1, max_value=17, value=9)
+            
+            if st.sidebar.button("Generate QB Projection"):
+                try:
+                    projections, qb_stats, defense_stats, game_context = projector.project_qb_stats(
+                        qb_name, opponent_team, games_played
+                    )
+                    
+                    # Display results
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        st.subheader(f"📊 {qb_name} Projection vs {opponent_team}")
+                        
+                        # Confidence indicator
+                        confidence = projections['Confidence']
+                        if confidence >= 0.7:
+                            st.success(f"🟢 High Confidence Projection ({confidence:.0%})")
+                        elif confidence >= 0.5:
+                            st.warning(f"🟡 Medium Confidence Projection ({confidence:.0%})")
+                        else:
+                            st.error(f"🔴 Low Confidence Projection ({confidence:.0%})")
+                        
+                        # Game context
+                        st.write(f"**Game Context:**")
+                        st.write(f"- Expected Total: {projections['ExpectedGameTotal']} points")
+                        st.write(f"- Game Script: {projections['GameScript']}")
+                        st.write(f"- Spread: {game_context['spread']:+.1f}")
+                    
+                    with col2:
+                        st.subheader("Projected Stats")
+                        
+                        # Create metrics
+                        col2a, col2b, col2c = st.columns(3)
+                        
+                        with col2a:
+                            st.metric("Passing Yards", f"{projections['PassingYards']:.1f}")
+                            st.metric("Passing TDs", f"{projections['PassingTDs']:.1f}")
+                            st.metric("Interceptions", f"{projections['Interceptions']:.1f}")
+                        
+                        with col2b:
+                            st.metric("Pass Attempts", f"{projections['PassAttempts']:.1f}")
+                            st.metric("Completions", f"{projections['Completions']:.1f}")
+                            st.metric("Rushing Yards", f"{projections['RushingYards']:.1f}")
+                        
+                        with col2c:
+                            st.metric("Rushing TDs", f"{projections['RushingTDs']:.1f}")
+                            st.metric("Fantasy Points", f"{projections['FantasyPoints']:.1f}")
+                    
+                    # Player stats and defense stats
+                    col3, col4 = st.columns(2)
+                    
+                    with col3:
+                        st.subheader(f"{qb_name} Season Stats")
+                        st.write(f"**Passing:** {qb_stats['PassingYDS']} yards, {qb_stats['PassingTD']} TDs, {qb_stats['PassingInt']} INTs")
+                        st.write(f"**Rushing:** {qb_stats['RushingYDS']} yards, {qb_stats['RushingTD']} TDs")
+                        st.write(f"**Per Game:** {qb_stats['PassingYDS']/games_played:.1f} pass yds, {qb_stats['RushingYDS']/games_played:.1f} rush yds")
+                    
+                    with col4:
+                        st.subheader(f"{opponent_team} Defense")
+                        st.write(f"**Passing Allowed:** {defense_stats['PASSING YARDS ALLOWED']} yds/game, {defense_stats['PASSING TD ALLOWED']} TDs/game")
+                        st.write(f"**Rushing Allowed:** {defense_stats['RUSHING YARDS PER GAME ALLOWED']} yds/game, {defense_stats['RUSHING TD PER GAME ALLOWED']} TDs/game")
+                        st.write(f"**Interceptions:** {defense_stats['INTERCENTIONS']:.1f}/game")
+                        
+                except ValueError as e:
+                    st.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
