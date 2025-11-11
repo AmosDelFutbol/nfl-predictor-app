@@ -25,10 +25,38 @@ class EnhancedNFLProjector:
             with open('week_10_odds.json', 'r') as f:
                 self.odds_data = json.load(f)
             
+            # Clean the data - fill NaN values
+            self._clean_data()
+            
             st.success("✅ All data loaded successfully!")
             
         except Exception as e:
             st.error(f"❌ Error loading data: {e}")
+    
+    def _clean_data(self):
+        """Clean the data by filling NaN values with appropriate defaults"""
+        # Clean RB data
+        if hasattr(self, 'rb_data') and self.rb_data is not None:
+            rb_numeric_columns = ['RushingYDS', 'RushingTD', 'TouchCarries', 'ReceivingYDS', 'ReceivingRec', 'ReceivingTD']
+            for col in rb_numeric_columns:
+                if col in self.rb_data.columns:
+                    self.rb_data[col] = self.rb_data[col].fillna(0)
+        
+        # Clean QB data
+        if hasattr(self, 'qb_data') and self.qb_data is not None:
+            qb_numeric_columns = ['PassingYDS', 'PassingTD', 'PassingInt', 'RushingYDS', 'RushingTD']
+            for col in qb_numeric_columns:
+                if col in self.qb_data.columns:
+                    self.qb_data[col] = self.qb_data[col].fillna(0)
+    
+    def _safe_float(self, value, default=0.0):
+        """Safely convert value to float, handling NaN and None"""
+        if value is None or pd.isna(value):
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
     
     def _get_defense_stats(self, team_name):
         """Get defense stats for a specific team"""
@@ -58,7 +86,8 @@ class EnhancedNFLProjector:
         
         # Get SOS adjustment
         if self.sos_data and player_team in self.sos_data:
-            context['sos_adjustment'] = 1.0 + (self.sos_data[player_team]['combined_sos'] - 0.5) * 0.3
+            sos_value = self.sos_data[player_team].get('combined_sos', 0.5)
+            context['sos_adjustment'] = 1.0 + (self._safe_float(sos_value) - 0.5) * 0.3
         
         # Get game odds
         if self.odds_data:
@@ -66,45 +95,48 @@ class EnhancedNFLProjector:
                 if (odds.get('home_team') == player_team and odds.get('away_team') == opponent_team) or \
                    (odds.get('home_team') == opponent_team and odds.get('away_team') == player_team):
                     if odds.get('market') == 'totals' and odds.get('point'):
-                        context['expected_total'] = odds['point']
+                        context['expected_total'] = self._safe_float(odds['point'], 45.0)
                     elif odds.get('market') == 'spreads' and odds.get('point'):
-                        context['spread'] = odds['point']
+                        context['spread'] = self._safe_float(odds['point'], 0.0)
         
         return context
     
     def estimate_vegas_line(self, projection, position, stat_type):
         """Estimate what the Vegas line might have been based on projection"""
+        # Ensure projection is a valid number
+        safe_projection = self._safe_float(projection, 0.0)
+        
         # These are rough estimates based on common Vegas lines
         if position == 'RB':
             if stat_type == 'rushing_yards':
                 # Vegas typically sets lines close to projections but rounded
-                estimated_line = round(projection / 5) * 5  # Round to nearest 5
+                estimated_line = round(safe_projection / 5) * 5  # Round to nearest 5
                 return max(45, min(125, estimated_line))  # Reasonable range for RBs
             elif stat_type == 'rushing_tds':
-                estimated_line = round(projection * 2) / 2  # Round to nearest 0.5
+                estimated_line = round(safe_projection * 2) / 2  # Round to nearest 0.5
                 return max(0.5, min(2.5, estimated_line))
             elif stat_type == 'receiving_yards':
-                estimated_line = round(projection / 5) * 5
+                estimated_line = round(safe_projection / 5) * 5
                 return max(15, min(80, estimated_line))
             elif stat_type == 'receptions':
-                estimated_line = round(projection * 2) / 2
+                estimated_line = round(safe_projection * 2) / 2
                 return max(2.5, min(8.5, estimated_line))
         
         elif position == 'QB':
             if stat_type == 'passing_yards':
-                estimated_line = round(projection / 10) * 10  # Round to nearest 10
+                estimated_line = round(safe_projection / 10) * 10  # Round to nearest 10
                 return max(180, min(350, estimated_line))
             elif stat_type == 'passing_tds':
-                estimated_line = round(projection * 2) / 2
+                estimated_line = round(safe_projection * 2) / 2
                 return max(0.5, min(3.5, estimated_line))
             elif stat_type == 'rushing_yards':
-                estimated_line = round(projection)
+                estimated_line = round(safe_projection)
                 return max(10, min(60, estimated_line))
             elif stat_type == 'interceptions':
-                estimated_line = round(projection * 2) / 2
+                estimated_line = round(safe_projection * 2) / 2
                 return max(0.5, min(2.5, estimated_line))
         
-        return round(projection)
+        return round(safe_projection)
     
     def project_rushing_stats(self, player_name, opponent_team, games_played=9):
         """Enhanced rushing projections for RBs and rushing QBs"""
@@ -126,20 +158,18 @@ class EnhancedNFLProjector:
         
         # Get defense and offense stats
         defense_stats = self._get_defense_stats(opponent_team)
-        offense_stats = self._get_offense_stats(player_team)
-        
         if not defense_stats:
             raise ValueError(f"Defense stats for '{opponent_team}' not found")
         
         # Get game context
         game_context = self.get_game_context(player_team, opponent_team)
         
-        # Calculate projections
+        # Calculate projections with safe float conversions
         projections = {}
         
-        # RUSHING YARDS
-        rb_rush_yds_pg = rb_stats['RushingYDS'] / games_played
-        def_rush_yds_allowed = defense_stats['RUSHING YARDS PER GAME ALLOWED']
+        # Safely get stats with defaults
+        rb_rush_yds_pg = self._safe_float(rb_stats['RushingYDS']) / games_played
+        def_rush_yds_allowed = self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100))
         
         # Game script adjustment
         game_script = 1.15 if game_context['spread'] > 3 else 0.85 if game_context['spread'] < -3 else 1.0
@@ -150,8 +180,8 @@ class EnhancedNFLProjector:
         )
         
         # RUSHING TDs
-        rb_rush_td_pg = rb_stats['RushingTD'] / games_played
-        def_rush_td_allowed = defense_stats['RUSHING TD PER GAME ALLOWED']
+        rb_rush_td_pg = self._safe_float(rb_stats['RushingTD']) / games_played
+        def_rush_td_allowed = self._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 1.0))
         
         projections['RushingTDs'] = (
             (rb_rush_td_pg + def_rush_td_allowed) / 2 *
@@ -159,8 +189,8 @@ class EnhancedNFLProjector:
         )
         
         # CARRIES
-        rb_carries_pg = rb_stats['TouchCarries'] / games_played
-        def_rush_attempts_allowed = defense_stats['RUSHING ATTEMPTS ALLOWED']
+        rb_carries_pg = self._safe_float(rb_stats['TouchCarries']) / games_played
+        def_rush_attempts_allowed = self._safe_float(defense_stats.get('RUSHING ATTEMPTS ALLOWED', 25))
         
         projections['Carries'] = (
             (rb_carries_pg + def_rush_attempts_allowed * 0.3) / 1.3 * game_script
@@ -187,12 +217,12 @@ class EnhancedNFLProjector:
         projections = {}
         
         # RUSHING YARDS
-        qb_rush_yds_pg = qb_stats['RushingYDS'] / games_played
+        qb_rush_yds_pg = self._safe_float(qb_stats['RushingYDS']) / games_played
         
         projections['RushingYards'] = qb_rush_yds_pg * game_context['sos_adjustment']
         
         # RUSHING TDs
-        qb_rush_td_pg = qb_stats['RushingTD'] / games_played
+        qb_rush_td_pg = self._safe_float(qb_stats['RushingTD']) / games_played
         
         projections['RushingTDs'] = qb_rush_td_pg * (game_context['expected_total'] / 45.0)
         
@@ -225,8 +255,8 @@ class EnhancedNFLProjector:
         projections = {}
         
         # PASSING YARDS
-        qb_pass_yds_pg = qb_stats['PassingYDS'] / games_played
-        def_pass_yds_allowed = defense_stats['PASSING YARDS ALLOWED']
+        qb_pass_yds_pg = self._safe_float(qb_stats['PassingYDS']) / games_played
+        def_pass_yds_allowed = self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230))
         
         projections['PassingYards'] = (
             (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
@@ -234,8 +264,8 @@ class EnhancedNFLProjector:
         )
         
         # PASSING TDs
-        qb_pass_td_pg = qb_stats['PassingTD'] / games_played
-        def_pass_td_allowed = defense_stats['PASSING TD ALLOWED']
+        qb_pass_td_pg = self._safe_float(qb_stats['PassingTD']) / games_played
+        def_pass_td_allowed = self._safe_float(defense_stats.get('PASSING TD ALLOWED', 1.5))
         
         projections['PassingTDs'] = (
             (qb_pass_td_pg + def_pass_td_allowed) / 2 *
@@ -243,18 +273,18 @@ class EnhancedNFLProjector:
         )
         
         # INTERCEPTIONS
-        qb_int_pg = qb_stats['PassingInt'] / games_played
+        qb_int_pg = self._safe_float(qb_stats['PassingInt']) / games_played
         
         projections['Interceptions'] = (
-            (qb_int_pg + defense_stats['INTERCENTIONS']) / 2
+            (qb_int_pg + self._safe_float(defense_stats.get('INTERCENTIONS', 1.0))) / 2
         )
         
         # PASS ATTEMPTS & COMPLETIONS
-        def_attempts_allowed = defense_stats['PASSING ATTEMPTS ALLOWED']
-        def_completions_allowed = defense_stats['PASSING COMPLETIONS ALLOWED']
+        def_attempts_allowed = self._safe_float(defense_stats.get('PASSING ATTEMPTS ALLOWED', 35))
+        def_completions_allowed = self._safe_float(defense_stats.get('PASSING COMPLETIONS ALLOWED', 23))
         
         projections['PassAttempts'] = def_attempts_allowed * (game_context['expected_total'] / 45.0)
-        defense_completion_pct = def_completions_allowed / def_attempts_allowed
+        defense_completion_pct = def_completions_allowed / def_attempts_allowed if def_attempts_allowed > 0 else 0.65
         projections['Completions'] = projections['PassAttempts'] * defense_completion_pct
         
         # FANTASY POINTS (Passing only)
@@ -351,9 +381,9 @@ def main():
                     with col3:
                         st.metric("Team", player_stats['Team'])
                         if position == 'RB':
-                            st.metric("Season Rush Yds", player_stats['RushingYDS'])
+                            st.metric("Season Rush Yds", int(projector._safe_float(player_stats['RushingYDS'])))
                         else:
-                            st.metric("Season Rush Yds", player_stats['RushingYDS'])
+                            st.metric("Season Rush Yds", int(projector._safe_float(player_stats['RushingYDS'])))
                     
                     # Analysis section
                     st.subheader("📈 Vegas Line Analysis")
@@ -374,10 +404,11 @@ def main():
                     # Defense info
                     with st.expander("View Defense Stats"):
                         st.write(f"**{opponent_team_rush} Rush Defense Allowed Per Game:**")
-                        st.write(f"- Rushing: {defense_stats['RUSHING YARDS PER GAME ALLOWED']} yds, {defense_stats['RUSHING TD PER GAME ALLOWED']} TDs")
+                        st.write(f"- Rushing: {projector._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 0))} TDs")
                         
                 except Exception as e:
                     st.error(f"Error generating projection: {e}")
+                    st.info("💡 This error might be due to missing data for this player. Try selecting a different player.")
     
     with tab2:
         st.subheader("Passing Projections")
@@ -426,7 +457,7 @@ def main():
                     
                     with col3:
                         st.metric("Team", qb_stats['Team'])
-                        st.metric("Season Pass Yds", qb_stats['PassingYDS'])
+                        st.metric("Season Pass Yds", int(projector._safe_float(qb_stats['PassingYDS'])))
                         st.metric("Vegas Yards Line", f"{vegas_pass_yds}")
                     
                     # Vegas lines display
@@ -461,11 +492,12 @@ def main():
                     # Defense info
                     with st.expander("View Defense Stats"):
                         st.write(f"**{opponent_team_qb} Pass Defense Allowed Per Game:**")
-                        st.write(f"- Passing: {defense_stats['PASSING YARDS ALLOWED']} yds, {defense_stats['PASSING TD ALLOWED']} TDs")
-                        st.write(f"- Interceptions: {defense_stats['INTERCENTIONS']:.1f}")
+                        st.write(f"- Passing: {projector._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('PASSING TD ALLOWED', 0))} TDs")
+                        st.write(f"- Interceptions: {projector._safe_float(defense_stats.get('INTERCENTIONS', 0)):.1f}")
                         
                 except Exception as e:
                     st.error(f"Error generating projection: {e}")
+                    st.info("💡 This error might be due to missing data for this player. Try selecting a different player.")
 
 if __name__ == "__main__":
     main()
