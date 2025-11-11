@@ -11,10 +11,13 @@ class EnhancedNFLProjector:
         self.missing_files = []
         
         try:
-            # Load base data files from GitHub - try different possible file names
+            # Load base data files from GitHub
             self.rb_data = self._load_csv_file(['RB_season.csv', 'rb_data.csv', 'running_backs.csv'])
             self.qb_data = self._load_csv_file(['QB_season.csv', 'qb_data.csv', 'quarterbacks.csv'])
-            self.defense_data = self._load_csv_file(['2025_NFL_DEFENSE.csv', 'defense_data.csv', 'nfl_defense.csv', 'DEFENSE.csv'])
+            
+            # Load JSON defense and offense data
+            self.defense_data = self._load_json_file(['2025_NFL_DEFENSE.json', 'defense_data.json', 'nfl_defense.json'])
+            self.offense_data = self._load_json_file(['2025_NFL_OFFENSE.json', 'offense_data.json', 'nfl_offense.json'])
             
             # Load advanced data from our main model
             self.elo_data = self._load_elo_data()
@@ -43,7 +46,11 @@ class EnhancedNFLProjector:
             # Show initialization status
             if not self.missing_files:
                 st.success("✅ Enhanced NFL Projector initialized successfully!")
-                st.info(f"Loaded: {len(self.rb_data)} RBs, {len(self.qb_data)} QBs, {len(self.defense_data)} teams")
+                st.info(f"Loaded: {len(self.rb_data)} RBs, {len(self.qb_data)} QBs")
+                if self.defense_data:
+                    st.info(f"Defense data loaded for {len(self.defense_data)} teams")
+                if self.offense_data:
+                    st.info(f"Offense data loaded for {len(self.offense_data)} teams")
                 if self.elo_data:
                     st.info(f"Advanced metrics loaded for {len(self.elo_data)} teams")
             else:
@@ -54,7 +61,8 @@ class EnhancedNFLProjector:
             # Create empty dataframes to prevent further errors
             self.rb_data = pd.DataFrame()
             self.qb_data = pd.DataFrame()
-            self.defense_data = pd.DataFrame()
+            self.defense_data = {}
+            self.offense_data = {}
             self.elo_data = {}
             self.sos_data = {}
     
@@ -74,6 +82,24 @@ class EnhancedNFLProjector:
         # If we get here, none of the files worked
         self.missing_files.extend(possible_filenames)
         return pd.DataFrame()
+    
+    def _load_json_file(self, possible_filenames):
+        """Try to load a JSON file with multiple possible names"""
+        for filename in possible_filenames:
+            try:
+                with open(filename, 'r') as f:
+                    data = json.load(f)
+                st.success(f"✅ Loaded {filename}")
+                return data
+            except FileNotFoundError:
+                continue
+            except Exception as e:
+                st.warning(f"⚠️ Error loading {filename}: {e}")
+                continue
+        
+        # If we get here, none of the files worked
+        self.missing_files.extend(possible_filenames)
+        return {}
     
     def _load_elo_data(self):
         """Load ELO and efficiency metrics"""
@@ -136,17 +162,56 @@ class EnhancedNFLProjector:
         """Clean all dataframes"""
         if not self.rb_data.empty:
             self.rb_data.columns = self.rb_data.columns.str.strip()
-            st.info(f"RB columns: {list(self.rb_data.columns)}")
         if not self.qb_data.empty:
             self.qb_data.columns = self.qb_data.columns.str.strip()
-            st.info(f"QB columns: {list(self.qb_data.columns)}")
-        if not self.defense_data.empty:
-            self.defense_data.columns = self.defense_data.columns.str.strip()
-            st.info(f"Defense columns: {list(self.defense_data.columns)}")
     
     def _get_team_abbreviation_from_name(self, team_name):
         """Convert team name to abbreviation"""
         return self.team_mapping.get(team_name, None)
+    
+    def _get_defense_stats(self, team_name):
+        """Get defense stats from JSON data"""
+        if not self.defense_data:
+            return {}
+        
+        # Try different possible structures in the JSON
+        if isinstance(self.defense_data, list):
+            for team in self.defense_data:
+                if team.get('Team') == team_name:
+                    return team
+        elif isinstance(self.defense_data, dict):
+            # If it's a dict with team names as keys
+            if team_name in self.defense_data:
+                return self.defense_data[team_name]
+            # If it's a dict with a list of teams
+            elif 'teams' in self.defense_data:
+                for team in self.defense_data['teams']:
+                    if team.get('Team') == team_name:
+                        return team
+        
+        return {}
+    
+    def _get_offense_stats(self, team_name):
+        """Get offense stats from JSON data for enhanced projections"""
+        if not self.offense_data:
+            return {}
+        
+        # Try different possible structures in the JSON
+        if isinstance(self.offense_data, list):
+            for team in self.offense_data:
+                if team.get('Team') == team_name:
+                    return team
+        elif isinstance(self.offense_data, dict):
+            # If it's a dict with team names as keys
+            if team_name in self.offense_data:
+                return self.offense_data[team_name]
+            # If it's a dict with a list of teams
+            elif 'teams' in self.offense_data:
+                for team in self.offense_data['teams']:
+                    if team.get('Team') == team_name:
+                        return team
+        
+        return {}
     
     def get_game_context(self, player_team, opponent_team):
         """Get advanced game context for projections"""
@@ -157,7 +222,9 @@ class EnhancedNFLProjector:
             'opponent_team_elo': 1500,
             'player_team_off_epa': 0.0,
             'opponent_team_def_epa': 0.0,
-            'sos_adjustment': 1.0
+            'sos_adjustment': 1.0,
+            'player_offense_stats': {},
+            'opponent_defense_stats': {}
         }
         
         # Get ELO data
@@ -171,6 +238,10 @@ class EnhancedNFLProjector:
         if opponent_abbr in self.elo_data:
             context['opponent_team_elo'] = self.elo_data[opponent_abbr]['nfelo']
             context['opponent_team_def_epa'] = self.elo_data[opponent_abbr]['def_epa_play']
+        
+        # Get offense and defense stats from JSON files
+        context['player_offense_stats'] = self._get_offense_stats(player_team)
+        context['opponent_defense_stats'] = self._get_defense_stats(opponent_team)
         
         # Get SOS adjustment
         if player_team in self.sos_data:
@@ -205,6 +276,10 @@ class EnhancedNFLProjector:
         elif abs(elo_diff) > 50:
             confidence_score += 0.1
         
+        # Data availability confidence
+        if game_context['player_offense_stats'] and game_context['opponent_defense_stats']:
+            confidence_score += 0.1
+        
         return min(confidence_score, 1.0)
     
     def create_sample_data(self):
@@ -230,15 +305,32 @@ class EnhancedNFLProjector:
         self.qb_data = pd.DataFrame(sample_qbs, columns=['PlayerName', 'Team', 'PassingYDS', 'PassingTD', 'PassingInt', 'RushingYDS', 'RushingTD'])
         
         # Sample defense data
-        sample_defenses = [
-            ['San Francisco 49ers', 85, 0.7, 210, 1.2, 25, 22, 8],
-            ['Kansas City Chiefs', 95, 0.9, 230, 1.4, 27, 24, 6],
-            ['Buffalo Bills', 90, 0.8, 225, 1.3, 26, 23, 7],
-            ['Dallas Cowboys', 100, 1.0, 240, 1.5, 28, 25, 9]
+        self.defense_data = [
+            {'Team': 'San Francisco 49ers', 'RUSHING_YARDS_ALLOWED': 85, 'RUSHING_TD_ALLOWED': 0.7, 'PASSING_YARDS_ALLOWED': 210, 'PASSING_TD_ALLOWED': 1.2},
+            {'Team': 'Kansas City Chiefs', 'RUSHING_YARDS_ALLOWED': 95, 'RUSHING_TD_ALLOWED': 0.9, 'PASSING_YARDS_ALLOWED': 230, 'PASSING_TD_ALLOWED': 1.4},
+            {'Team': 'Buffalo Bills', 'RUSHING_YARDS_ALLOWED': 90, 'RUSHING_TD_ALLOWED': 0.8, 'PASSING_YARDS_ALLOWED': 225, 'PASSING_TD_ALLOWED': 1.3},
+            {'Team': 'Dallas Cowboys', 'RUSHING_YARDS_ALLOWED': 100, 'RUSHING_TD_ALLOWED': 1.0, 'PASSING_YARDS_ALLOWED': 240, 'PASSING_TD_ALLOWED': 1.5}
         ]
-        self.defense_data = pd.DataFrame(sample_defenses, columns=['Team', 'RUSHING YARDS PER GAME ALLOWED', 'RUSHING TD PER GAME ALLOWED', 'PASSING YARDS ALLOWED', 'PASSING TD ALLOWED', 'PASSING ATTEMPTS ALLOWED', 'PASSING COMPLETIONS ALLOWED', 'INTERCENTIONS'])
+        
+        # Sample offense data
+        self.offense_data = [
+            {'Team': 'San Francisco 49ers', 'TOTAL_YARDS': 380, 'RUSHING_YARDS': 140, 'PASSING_YARDS': 240, 'POINTS': 28.5},
+            {'Team': 'Kansas City Chiefs', 'TOTAL_YARDS': 370, 'RUSHING_YARDS': 110, 'PASSING_YARDS': 260, 'POINTS': 27.8},
+            {'Team': 'Buffalo Bills', 'TOTAL_YARDS': 360, 'RUSHING_YARDS': 120, 'PASSING_YARDS': 240, 'POINTS': 26.5},
+            {'Team': 'Dallas Cowboys', 'TOTAL_YARDS': 350, 'RUSHING_YARDS': 130, 'PASSING_YARDS': 220, 'POINTS': 25.8}
+        ]
         
         st.info("✅ Sample data created for demonstration")
+    
+    def _get_json_stat(self, stats_dict, possible_keys, default=0):
+        """Safely get a stat from JSON data with multiple possible key names"""
+        if not stats_dict:
+            return default
+        
+        for key in possible_keys:
+            if key in stats_dict:
+                return stats_dict[key]
+        return default
     
     def project_rb_stats(self, rb_name, opponent_team, games_played=9):
         """Enhanced RB projections using advanced metrics"""
@@ -251,18 +343,15 @@ class EnhancedNFLProjector:
         if rb_row.empty:
             raise ValueError(f"RB '{rb_name}' not found in data")
         
-        defense_row = self.defense_data[self.defense_data['Team'] == opponent_team]
-        if defense_row.empty:
-            raise ValueError(f"Team '{opponent_team}' not found in data")
-        
         rb_stats = rb_row.iloc[0]
-        defense_stats = defense_row.iloc[0]
         
         # Get player's team
         player_team = rb_stats.get('Team', 'Unknown')
         
         # Get advanced game context
         game_context = self.get_game_context(player_team, opponent_team)
+        defense_stats = game_context['opponent_defense_stats']
+        offense_stats = game_context['player_offense_stats']
         
         # Calculate confidence
         confidence = self.calculate_confidence_factors(
@@ -275,9 +364,33 @@ class EnhancedNFLProjector:
         # Enhanced projections with advanced metrics
         projections = {}
         
-        # RUSHING YARDS - Enhanced calculation
+        # Get defense stats with flexible key names
+        def_rush_yds_allowed = self._get_json_stat(defense_stats, 
+            ['RUSHING_YARDS_ALLOWED', 'RUSHING_YARDS_PER_GAME', 'RUSH_YARDS_ALLOWED'], 100)
+        def_rush_td_allowed = self._get_json_stat(defense_stats,
+            ['RUSHING_TD_ALLOWED', 'RUSH_TD_ALLOWED', 'RUSHING_TOUCHDOWNS_ALLOWED'], 1.0)
+        def_pass_yds_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_YARDS_ALLOWED', 'PASS_YARDS_ALLOWED', 'PASSING_YARDS_PER_GAME'], 230)
+        def_pass_td_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_TD_ALLOWED', 'PASS_TD_ALLOWED', 'PASSING_TOUCHDOWNS_ALLOWED'], 1.5)
+        def_completions_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_COMPLETIONS_ALLOWED', 'COMPLETIONS_ALLOWED'], 24)
+        def_rush_attempts_allowed = self._get_json_stat(defense_stats,
+            ['RUSHING_ATTEMPTS_ALLOWED', 'RUSH_ATTEMPTS_ALLOWED'], 25)
+        
+        # Get offense stats for enhanced accuracy
+        team_rush_yds = self._get_json_stat(offense_stats,
+            ['RUSHING_YARDS', 'RUSH_YARDS', 'RUSHING_YARDS_PER_GAME'], 120)
+        team_pass_yds = self._get_json_stat(offense_stats,
+            ['PASSING_YARDS', 'PASS_YARDS', 'PASSING_YARDS_PER_GAME'], 240)
+        team_points = self._get_json_stat(offense_stats,
+            ['POINTS', 'POINTS_PER_GAME', 'SCORING'], 24.0)
+        
+        # RUSHING YARDS - Enhanced calculation with offense data
         rb_rush_yds_per_game = rb_stats['RushingYDS'] / games_played
-        def_rush_yds_allowed = defense_stats['RUSHING YARDS PER GAME ALLOWED']
+        
+        # Team rushing share adjustment (how much of team's rushing this RB gets)
+        team_rush_share = min(1.0, rb_rush_yds_per_game / (team_rush_yds / games_played)) if team_rush_yds > 0 else 0.5
         
         # Apply efficiency adjustments
         off_rush_efficiency = max(0.5, min(2.0, 
@@ -293,66 +406,56 @@ class EnhancedNFLProjector:
             game_script_multiplier = 0.85
         
         projections['RushingYards'] = (
-            (rb_rush_yds_per_game * off_rush_efficiency + 
-             def_rush_yds_allowed * def_rush_efficiency) / 2 *
+            (rb_rush_yds_per_game * off_rush_efficiency * team_rush_share + 
+             def_rush_yds_allowed * def_rush_efficiency * 0.3) / 1.3 *
             game_script_multiplier * game_context['sos_adjustment']
         )
         
         # RUSHING TDs - Enhanced calculation
         rb_rush_td_per_game = rb_stats['RushingTD'] / games_played
-        def_rush_td_allowed = defense_stats['RUSHING TD PER GAME ALLOWED']
         
         # Red zone efficiency adjustment
-        red_zone_efficiency = min(2.0, game_context['expected_total'] / 45.0)  # Higher totals = more TDs
+        red_zone_efficiency = min(2.0, team_points / 24.0)  # Use team scoring for TD probability
         
         projections['RushingTDs'] = (
-            (rb_rush_td_per_game + def_rush_td_allowed) / 2 *
+            (rb_rush_td_per_game + def_rush_td_allowed * 0.5) / 1.5 *
             red_zone_efficiency * game_context['sos_adjustment']
         )
         
-        # RECEIVING YARDS - Enhanced calculation
+        # RECEIVING YARDS - Enhanced calculation with offense data
         rb_rec_yds_per_game = rb_stats['ReceivingYDS'] / games_played
-        def_pass_yds_allowed = defense_stats['PASSING YARDS ALLOWED']
         
-        # Pass game efficiency adjustment
-        qb_efficiency = max(0.7, min(1.3, 
-            game_context.get('qb_rating', 1.0)))
-        
-        # Game script adjustment for receiving (inverse of rushing)
-        rec_game_script = 1.0 / game_script_multiplier if game_script_multiplier != 1.0 else 1.0
+        # Team receiving share for RBs
+        team_rec_share_rb = min(1.0, rb_rec_yds_per_game / (team_pass_yds / games_played * 0.2)) if team_pass_yds > 0 else 0.1
         
         projections['ReceivingYards'] = (
-            rb_rec_yds_per_game * 
+            rb_rec_yds_per_game * team_rec_share_rb *
             (def_pass_yds_allowed / 231.8) *  # Normalize
-            qb_efficiency * rec_game_script * game_context['sos_adjustment']
+            game_context['sos_adjustment']
         )
         
         # RECEPTIONS - Enhanced calculation
         rb_rec_per_game = rb_stats['ReceivingRec'] / games_played
-        def_completions_allowed = defense_stats['PASSING COMPLETIONS ALLOWED']
         
         projections['Receptions'] = (
-            rb_rec_per_game * 
-            (def_completions_allowed / 24.1) *  # Normalize
-            qb_efficiency * rec_game_script
+            rb_rec_per_game * team_rec_share_rb *
+            (def_completions_allowed / 24.1)  # Normalize
         )
         
         # RECEIVING TDs - Enhanced calculation
         rb_rec_td_per_game = rb_stats['ReceivingTD'] / games_played
-        def_pass_td_allowed = defense_stats['PASSING TD ALLOWED']
         
         projections['ReceivingTDs'] = (
-            (rb_rec_td_per_game + def_pass_td_allowed * 0.3) / 2 *
+            (rb_rec_td_per_game + def_pass_td_allowed * 0.2) / 1.2 *
             red_zone_efficiency * game_context['sos_adjustment']
         )
         
         # CARRIES - Enhanced calculation
         rb_carries_per_game = rb_stats['TouchCarries'] / games_played
-        def_rush_attempts_allowed = defense_stats['RUSHING ATTEMPTS ALLOWED']
         
         projections['Carries'] = (
-            (rb_carries_per_game * off_rush_efficiency + 
-             def_rush_attempts_allowed * 0.3) / 2 *
+            (rb_carries_per_game * off_rush_efficiency * team_rush_share + 
+             def_rush_attempts_allowed * 0.25) / 1.25 *
             game_script_multiplier
         )
         
@@ -371,7 +474,7 @@ class EnhancedNFLProjector:
         projections['ExpectedGameTotal'] = game_context['expected_total']
         
         return projections, rb_stats, defense_stats, game_context
-    
+
     def project_qb_stats(self, qb_name, opponent_team, games_played=9):
         """Enhanced QB projections using advanced metrics"""
         
@@ -383,18 +486,15 @@ class EnhancedNFLProjector:
         if qb_row.empty:
             raise ValueError(f"QB '{qb_name}' not found in data")
         
-        defense_row = self.defense_data[self.defense_data['Team'] == opponent_team]
-        if defense_row.empty:
-            raise ValueError(f"Team '{opponent_team}' not found in data")
-        
         qb_stats = qb_row.iloc[0]
-        defense_stats = defense_row.iloc[0]
         
         # Get player's team
         player_team = qb_stats.get('Team', 'Unknown')
         
         # Get advanced game context
         game_context = self.get_game_context(player_team, opponent_team)
+        defense_stats = game_context['opponent_defense_stats']
+        offense_stats = game_context['player_offense_stats']
         
         # Calculate confidence
         confidence = self.calculate_confidence_factors(
@@ -407,9 +507,29 @@ class EnhancedNFLProjector:
         # Enhanced projections with advanced metrics
         projections = {}
         
-        # PASSING YARDS - Enhanced calculation
+        # Get defense stats with flexible key names
+        def_pass_yds_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_YARDS_ALLOWED', 'PASS_YARDS_ALLOWED', 'PASSING_YARDS_PER_GAME'], 230)
+        def_pass_td_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_TD_ALLOWED', 'PASS_TD_ALLOWED', 'PASSING_TOUCHDOWNS_ALLOWED'], 1.5)
+        def_interceptions = self._get_json_stat(defense_stats,
+            ['INTERCEPTIONS', 'INTS', 'PASSING_INTERCEPTIONS'], 0.8)
+        def_attempts_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_ATTEMPTS_ALLOWED', 'PASS_ATTEMPTS_ALLOWED'], 35)
+        def_completions_allowed = self._get_json_stat(defense_stats,
+            ['PASSING_COMPLETIONS_ALLOWED', 'COMPLETIONS_ALLOWED'], 24)
+        
+        # Get offense stats for enhanced accuracy
+        team_pass_yds = self._get_json_stat(offense_stats,
+            ['PASSING_YARDS', 'PASS_YARDS', 'PASSING_YARDS_PER_GAME'], 240)
+        team_points = self._get_json_stat(offense_stats,
+            ['POINTS', 'POINTS_PER_GAME', 'SCORING'], 24.0)
+        
+        # PASSING YARDS - Enhanced calculation with offense data
         qb_pass_yds_per_game = qb_stats['PassingYDS'] / games_played
-        def_pass_yds_allowed = defense_stats['PASSING YARDS ALLOWED']
+        
+        # Team passing share (QB's contribution to team passing)
+        team_pass_share = min(1.0, qb_pass_yds_per_game / (team_pass_yds / games_played)) if team_pass_yds > 0 else 1.0
         
         # Efficiency adjustments
         qb_efficiency = max(0.7, min(1.3, 
@@ -421,17 +541,16 @@ class EnhancedNFLProjector:
         total_adjustment = game_context['expected_total'] / 45.0
         
         projections['PassingYards'] = (
-            (qb_pass_yds_per_game * qb_efficiency + 
-             def_pass_yds_allowed * def_pass_efficiency) / 2 *
+            (qb_pass_yds_per_game * qb_efficiency * team_pass_share + 
+             def_pass_yds_allowed * def_pass_efficiency * 0.5) / 1.5 *
             total_adjustment * game_context['sos_adjustment']
         )
         
         # PASSING TDs - Enhanced calculation
         qb_pass_td_per_game = qb_stats['PassingTD'] / games_played
-        def_pass_td_allowed = defense_stats['PASSING TD ALLOWED']
         
         # Red zone efficiency
-        red_zone_efficiency = min(2.0, game_context['expected_total'] / 45.0)
+        red_zone_efficiency = min(2.0, team_points / 24.0)
         
         projections['PassingTDs'] = (
             (qb_pass_td_per_game * qb_efficiency + 
@@ -441,7 +560,6 @@ class EnhancedNFLProjector:
         
         # INTERCEPTIONS - Enhanced calculation
         qb_int_per_game = qb_stats['PassingInt'] / games_played
-        def_interceptions = defense_stats['INTERCENTIONS']
         
         # Pressure adjustment based on defense efficiency
         pressure_factor = max(0.5, min(2.0, 
@@ -470,14 +588,11 @@ class EnhancedNFLProjector:
         )
         
         # PASS ATTEMPTS & COMPLETIONS - Enhanced calculation
-        def_attempts_allowed = defense_stats['PASSING ATTEMPTS ALLOWED']
-        def_completions_allowed = defense_stats['PASSING COMPLETIONS ALLOWED']
-        
         # Game script adjustment for pass attempts
         pass_attempts_script = 1.15 if game_context['spread'] < 0 else 0.85  # Underdogs pass more
         
         projections['PassAttempts'] = (
-            def_attempts_allowed * pass_attempts_script * total_adjustment
+            def_attempts_allowed * pass_attempts_script * total_adjustment * team_pass_share
         )
         
         defense_completion_pct = def_completions_allowed / def_attempts_allowed if def_attempts_allowed > 0 else 0.65
@@ -506,44 +621,29 @@ class EnhancedNFLProjector:
         return self.qb_data['PlayerName'].tolist() if not self.qb_data.empty else []
     
     def get_available_teams(self):
-        return self.defense_data['Team'].tolist() if not self.defense_data.empty else []
-
-def main():
-    st.set_page_config(
-        page_title="NFL Player Projections",
-        page_icon="🏈",
-        layout="wide"
-    )
-    
-    st.title("🏈 Enhanced NFL Player Projections")
-    st.markdown("### Advanced Player Stats Projections with ELO & Efficiency Metrics")
-    
-    # Initialize the projector
-    if 'projector' not in st.session_state:
-        st.session_state.projector = EnhancedNFLProjector()
-    
-    projector = st.session_state.projector
-    
-    # Check if data loaded successfully
-    if projector.rb_data.empty or projector.qb_data.empty or projector.defense_data.empty:
-        st.error("❌ Could not load player data files.")
-        st.info("""
-        **Please ensure these files are in your GitHub repository:**
-        - RB_season.csv (or rb_data.csv, running_backs.csv)
-        - QB_season.csv (or qb_data.csv, quarterbacks.csv)  
-        - 2025_NFL_DEFENSE.csv (or defense_data.csv, nfl_defense.csv, DEFENSE.csv)
-        """)
+        """Get available teams from defense data"""
+        teams = set()
         
-        if st.button("Use Sample Data for Demonstration"):
-            projector.create_sample_data()
-            st.rerun()
-        return
-    
-    # Rest of the main function remains the same...
-    # [Previous main function code continues here...]
+        # Get teams from defense data
+        if isinstance(self.defense_data, list):
+            for team in self.defense_data:
+                if 'Team' in team:
+                    teams.add(team['Team'])
+        elif isinstance(self.defense_data, dict):
+            if 'teams' in self.defense_data and isinstance(self.defense_data['teams'], list):
+                for team in self.defense_data['teams']:
+                    if 'Team' in team:
+                        teams.add(team['Team'])
+            else:
+                # Assume dict keys are team names
+                teams.update(self.defense_data.keys())
+        
+        # Also get teams from player data
+        if not self.rb_data.empty:
+            teams.update(self.rb_data['Team'].unique())
+        if not self.qb_data.empty:
+            teams.update(self.qb_data['Team'].unique())
+            
+        return sorted(list(teams))
 
-# Note: The rest of the main function from the previous code should be added here
-# I'm omitting it for brevity since it's the same as before
-
-if __name__ == "__main__":
-    main()
+# [Rest of the Streamlit app code remains the same...]
