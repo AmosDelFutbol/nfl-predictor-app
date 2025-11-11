@@ -72,6 +72,40 @@ class EnhancedNFLProjector:
         
         return context
     
+    def estimate_vegas_line(self, projection, position, stat_type):
+        """Estimate what the Vegas line might have been based on projection"""
+        # These are rough estimates based on common Vegas lines
+        if position == 'RB':
+            if stat_type == 'rushing_yards':
+                # Vegas typically sets lines close to projections but rounded
+                estimated_line = round(projection / 5) * 5  # Round to nearest 5
+                return max(45, min(125, estimated_line))  # Reasonable range for RBs
+            elif stat_type == 'rushing_tds':
+                estimated_line = round(projection * 2) / 2  # Round to nearest 0.5
+                return max(0.5, min(2.5, estimated_line))
+            elif stat_type == 'receiving_yards':
+                estimated_line = round(projection / 5) * 5
+                return max(15, min(80, estimated_line))
+            elif stat_type == 'receptions':
+                estimated_line = round(projection * 2) / 2
+                return max(2.5, min(8.5, estimated_line))
+        
+        elif position == 'QB':
+            if stat_type == 'passing_yards':
+                estimated_line = round(projection / 10) * 10  # Round to nearest 10
+                return max(180, min(350, estimated_line))
+            elif stat_type == 'passing_tds':
+                estimated_line = round(projection * 2) / 2
+                return max(0.5, min(3.5, estimated_line))
+            elif stat_type == 'rushing_yards':
+                estimated_line = round(projection)
+                return max(10, min(60, estimated_line))
+            elif stat_type == 'interceptions':
+                estimated_line = round(projection * 2) / 2
+                return max(0.5, min(2.5, estimated_line))
+        
+        return round(projection)
+    
     def project_rushing_stats(self, player_name, opponent_team, games_played=9):
         """Enhanced rushing projections for RBs and rushing QBs"""
         # Check RB data first
@@ -297,16 +331,22 @@ def main():
                     # Game context
                     st.write(f"**Game Context:** Expected Total: {game_context['expected_total']} points, Spread: {game_context['spread']:+.1f}")
                     
+                    # Estimate Vegas lines
+                    vegas_rush_yds = projector.estimate_vegas_line(projections['RushingYards'], position, 'rushing_yards')
+                    vegas_rush_tds = projector.estimate_vegas_line(projections['RushingTDs'], position, 'rushing_tds')
+                    
                     # Projections in columns
                     col1, col2, col3 = st.columns(3)
                     
                     with col1:
                         st.metric("Rushing Yards", f"{projections['RushingYards']:.1f}")
                         st.metric("Rushing TDs", f"{projections['RushingTDs']:.1f}")
+                        st.metric("Estimated Vegas Line", f"{vegas_rush_yds} yards")
                     
                     with col2:
                         st.metric("Carries", f"{projections['Carries']:.1f}")
                         st.metric("Fantasy Points", f"{projections['FantasyPoints']:.1f}")
+                        st.metric("TDs Vegas Line", f"{vegas_rush_tds}")
                     
                     with col3:
                         st.metric("Team", player_stats['Team'])
@@ -314,6 +354,22 @@ def main():
                             st.metric("Season Rush Yds", player_stats['RushingYDS'])
                         else:
                             st.metric("Season Rush Yds", player_stats['RushingYDS'])
+                    
+                    # Analysis section
+                    st.subheader("📈 Vegas Line Analysis")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if projections['RushingYards'] > vegas_rush_yds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['RushingYards']:.1f}) > Vegas ({vegas_rush_yds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['RushingYards']:.1f}) < Vegas ({vegas_rush_yds})")
+                    
+                    with col2:
+                        if projections['RushingTDs'] > vegas_rush_tds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['RushingTDs']:.1f}) > Vegas ({vegas_rush_tds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['RushingTDs']:.1f}) < Vegas ({vegas_rush_tds})")
                     
                     # Defense info
                     with st.expander("View Defense Stats"):
@@ -350,6 +406,11 @@ def main():
                     # Game context
                     st.write(f"**Game Context:** Expected Total: {game_context['expected_total']} points, Spread: {game_context['spread']:+.1f}")
                     
+                    # Estimate Vegas lines
+                    vegas_pass_yds = projector.estimate_vegas_line(projections['PassingYards'], 'QB', 'passing_yards')
+                    vegas_pass_tds = projector.estimate_vegas_line(projections['PassingTDs'], 'QB', 'passing_tds')
+                    vegas_ints = projector.estimate_vegas_line(projections['Interceptions'], 'QB', 'interceptions')
+                    
                     # Projections in columns
                     col1, col2, col3 = st.columns(3)
                     
@@ -366,6 +427,36 @@ def main():
                     with col3:
                         st.metric("Team", qb_stats['Team'])
                         st.metric("Season Pass Yds", qb_stats['PassingYDS'])
+                        st.metric("Vegas Yards Line", f"{vegas_pass_yds}")
+                    
+                    # Vegas lines display
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Vegas TDs Line", f"{vegas_pass_tds}")
+                    with col2:
+                        st.metric("Vegas INTs Line", f"{vegas_ints}")
+                    
+                    # Analysis section
+                    st.subheader("📈 Vegas Line Analysis")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if projections['PassingYards'] > vegas_pass_yds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['PassingYards']:.1f}) > Vegas ({vegas_pass_yds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['PassingYards']:.1f}) < Vegas ({vegas_pass_yds})")
+                    
+                    with col2:
+                        if projections['PassingTDs'] > vegas_pass_tds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['PassingTDs']:.1f}) > Vegas ({vegas_pass_tds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['PassingTDs']:.1f}) < Vegas ({vegas_pass_tds})")
+                    
+                    with col3:
+                        if projections['Interceptions'] > vegas_ints:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['Interceptions']:.1f}) > Vegas ({vegas_ints})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['Interceptions']:.1f}) < Vegas ({vegas_ints})")
                     
                     # Defense info
                     with st.expander("View Defense Stats"):
