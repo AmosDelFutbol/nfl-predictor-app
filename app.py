@@ -541,11 +541,23 @@ class NFLPredictor:
         """Convert full team name to abbreviation"""
         return self.team_mapping.get(full_name, full_name)
     
+    def find_column_name(self, df, possible_names):
+        """Find the correct column name from a list of possibilities"""
+        for name in possible_names:
+            if name in df.columns:
+                return name
+        return None
+    
     def load_schedule_data(self):
-        """Load schedule data from schedule.json"""
+        """Load schedule data from schedule.json with flexible column names"""
         try:
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
+            
+            # Debug: Show what the schedule data looks like
+            st.write("📋 Schedule data structure:", type(schedule_data))
+            if isinstance(schedule_data, dict):
+                st.write("📋 Schedule keys:", list(schedule_data.keys()))
             
             # Handle different schedule formats
             if isinstance(schedule_data, dict):
@@ -553,40 +565,105 @@ class NFLPredictor:
                     self.schedule = pd.DataFrame(schedule_data['games'])
                 elif 'week' in schedule_data:
                     self.schedule = pd.DataFrame(schedule_data['week'])
-                else:
-                    # Assume it's a dictionary with game data
+                elif any(key in schedule_data for key in ['home', 'away', 'home_team', 'away_team']):
+                    # Single game format
                     self.schedule = pd.DataFrame([schedule_data])
-            else:
+                else:
+                    # Try to find the first list in the dictionary
+                    for key, value in schedule_data.items():
+                        if isinstance(value, list):
+                            self.schedule = pd.DataFrame(value)
+                            break
+                    else:
+                        st.error("❓ Could not find game data in schedule.json")
+                        return False
+            elif isinstance(schedule_data, list):
                 self.schedule = pd.DataFrame(schedule_data)
+            else:
+                st.error("❓ Unknown schedule format")
+                return False
+            
+            # Debug: Show schedule columns
+            st.write("📋 Schedule columns:", self.schedule.columns.tolist())
+            st.write("📋 Schedule sample:", self.schedule.head(2).to_dict())
                 
             st.success(f"✅ Loaded {len(self.schedule)} games from schedule")
             return True
             
         except Exception as e:
             st.error(f"❌ Failed to load schedule: {e}")
-            return False
+            # Create sample schedule as fallback
+            sample_games = [
+                {'home': 'Kansas City Chiefs', 'away': 'Philadelphia Eagles', 'date': '2024-11-15'},
+                {'home': 'San Francisco 49ers', 'away': 'Dallas Cowboys', 'date': '2024-11-15'},
+                {'home': 'Buffalo Bills', 'away': 'Miami Dolphins', 'date': '2024-11-15'}
+            ]
+            self.schedule = pd.DataFrame(sample_games)
+            st.warning("⚠️ Using sample schedule data")
+            return True
     
     def load_odds_data(self):
-        """Load odds data from odds.json"""
+        """Load odds data from odds.json with flexible column names"""
         try:
             with open('odds.json', 'r') as f:
                 odds_data = json.load(f)
+            
+            # Debug: Show what the odds data looks like
+            st.write("🎰 Odds data structure:", type(odds_data))
+            if isinstance(odds_data, dict):
+                st.write("🎰 Odds keys:", list(odds_data.keys()))
             
             # Handle different odds formats
             if isinstance(odds_data, dict):
                 if 'odds' in odds_data:
                     self.odds_data = pd.DataFrame(odds_data['odds'])
-                else:
+                elif any(key in odds_data for key in ['home_team', 'away_team', 'market']):
+                    # Single odds entry
                     self.odds_data = pd.DataFrame([odds_data])
-            else:
+                else:
+                    # Try to find the first list in the dictionary
+                    for key, value in odds_data.items():
+                        if isinstance(value, list):
+                            self.odds_data = pd.DataFrame(value)
+                            break
+                    else:
+                        st.warning("⚠️ Could not find odds data in odds.json")
+                        self.odds_data = pd.DataFrame()
+            elif isinstance(odds_data, list):
                 self.odds_data = pd.DataFrame(odds_data)
+            else:
+                st.warning("⚠️ Unknown odds format")
+                self.odds_data = pd.DataFrame()
+            
+            if len(self.odds_data) > 0:
+                st.write("🎰 Odds columns:", self.odds_data.columns.tolist())
+                st.success(f"✅ Loaded {len(self.odds_data)} odds entries")
+            else:
+                st.warning("⚠️ No odds data loaded")
                 
-            st.success(f"✅ Loaded {len(self.odds_data)} odds entries")
             return True
             
         except Exception as e:
             st.error(f"❌ Failed to load odds: {e}")
-            return False
+            self.odds_data = pd.DataFrame()
+            return True
+    
+    def get_game_info(self, game):
+        """Extract home and away team information from game data with flexible column names"""
+        # Try different possible column names for home team
+        home_col = self.find_column_name(game, ['home', 'home_team', 'Home', 'HomeTeam', 'homeTeam'])
+        away_col = self.find_column_name(game, ['away', 'away_team', 'Away', 'AwayTeam', 'awayTeam'])
+        date_col = self.find_column_name(game, ['date', 'game_date', 'Date', 'gameDate'])
+        
+        if home_col is None or away_col is None:
+            st.error(f"❌ Could not find team columns in game data. Available columns: {list(game.keys())}")
+            return None, None, None
+        
+        home_full = game[home_col]
+        away_full = game[away_col]
+        game_date = game[date_col] if date_col else '2024-11-15'
+        
+        return home_full, away_full, game_date
     
     def load_data(self):
         """Load schedule and odds data with SOS integration"""
@@ -842,8 +919,13 @@ def get_confidence_class(probability):
 def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data):
     """Create a professional game card matching the desired layout"""
     
-    home_full = game['home']
-    away_full = game['away']
+    # Get game info with flexible column names
+    game_info = predictor.get_game_info(game)
+    if game_info is None:
+        st.error("❌ Could not extract game information")
+        return
+        
+    home_full, away_full, game_date = game_info
     home_team = predictor.get_team_abbreviation(home_full)
     away_team = predictor.get_team_abbreviation(away_full)
     
@@ -1016,10 +1098,12 @@ def main():
         return
     
     for _, game in predictor.schedule.iterrows():
-        home_full = game['home']
-        away_full = game['away']
-        game_date = game.get('date', '2024-11-15')  # Default date if not provided
-        
+        # Get game info with flexible column names
+        game_info = predictor.get_game_info(game)
+        if game_info is None:
+            continue
+            
+        home_full, away_full, game_date = game_info
         home_team = predictor.get_team_abbreviation(home_full)
         away_team = predictor.get_team_abbreviation(away_full)
         
