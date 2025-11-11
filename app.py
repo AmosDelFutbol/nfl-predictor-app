@@ -151,8 +151,9 @@ st.markdown("""
         font-weight: 600;
         text-align: center;
         margin: 0.5rem 0;
-        display: inline-block;
-        min-width: 120px;
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
     }
     .confidence-high {
         background: linear-gradient(135deg, #10B981 0%, #059669 100%);
@@ -162,6 +163,12 @@ st.markdown("""
     }
     .confidence-low {
         background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+    }
+    .bubble-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin: 1rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -476,7 +483,6 @@ class NFLPredictor:
                 # Check if it's a model or a dictionary
                 if hasattr(loaded_data, 'predict_proba'):
                     self.model = loaded_data
-                    st.success("✅ Model loaded successfully!")
                     return True
                 else:
                     st.warning("⚠️ Loaded object is not a model, training new model...")
@@ -528,7 +534,6 @@ class NFLPredictor:
             with open('nfl_model.pkl', 'wb') as f:
                 pickle.dump(self.model, f)
             
-            st.success("✅ New model trained and saved successfully!")
             return True
             
         except Exception as e:
@@ -554,11 +559,6 @@ class NFLPredictor:
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
             
-            # Debug: Show what the schedule data looks like
-            st.write("📋 Schedule data structure:", type(schedule_data))
-            if isinstance(schedule_data, dict):
-                st.write("📋 Schedule keys:", list(schedule_data.keys()))
-            
             # Handle different schedule formats
             if isinstance(schedule_data, dict):
                 if 'games' in schedule_data:
@@ -582,12 +582,7 @@ class NFLPredictor:
             else:
                 st.error("❓ Unknown schedule format")
                 return False
-            
-            # Debug: Show schedule columns
-            st.write("📋 Schedule columns:", self.schedule.columns.tolist())
-            st.write("📋 Schedule sample:", self.schedule.head(2).to_dict())
                 
-            st.success(f"✅ Loaded {len(self.schedule)} games from schedule")
             return True
             
         except Exception as e:
@@ -599,7 +594,6 @@ class NFLPredictor:
                 {'home': 'Buffalo Bills', 'away': 'Miami Dolphins', 'date': '2024-11-15'}
             ]
             self.schedule = pd.DataFrame(sample_games)
-            st.warning("⚠️ Using sample schedule data")
             return True
     
     def load_odds_data(self):
@@ -607,11 +601,6 @@ class NFLPredictor:
         try:
             with open('odds.json', 'r') as f:
                 odds_data = json.load(f)
-            
-            # Debug: Show what the odds data looks like
-            st.write("🎰 Odds data structure:", type(odds_data))
-            if isinstance(odds_data, dict):
-                st.write("🎰 Odds keys:", list(odds_data.keys()))
             
             # Handle different odds formats
             if isinstance(odds_data, dict):
@@ -627,24 +616,15 @@ class NFLPredictor:
                             self.odds_data = pd.DataFrame(value)
                             break
                     else:
-                        st.warning("⚠️ Could not find odds data in odds.json")
                         self.odds_data = pd.DataFrame()
             elif isinstance(odds_data, list):
                 self.odds_data = pd.DataFrame(odds_data)
             else:
-                st.warning("⚠️ Unknown odds format")
                 self.odds_data = pd.DataFrame()
-            
-            if len(self.odds_data) > 0:
-                st.write("🎰 Odds columns:", self.odds_data.columns.tolist())
-                st.success(f"✅ Loaded {len(self.odds_data)} odds entries")
-            else:
-                st.warning("⚠️ No odds data loaded")
                 
             return True
             
         except Exception as e:
-            st.error(f"❌ Failed to load odds: {e}")
             self.odds_data = pd.DataFrame()
             return True
     
@@ -656,7 +636,6 @@ class NFLPredictor:
         date_col = self.find_column_name(game, ['date', 'game_date', 'Date', 'gameDate'])
         
         if home_col is None or away_col is None:
-            st.error(f"❌ Could not find team columns in game data. Available columns: {list(game.index)}")
             return None, None, None
         
         home_full = game[home_col]
@@ -669,9 +648,6 @@ class NFLPredictor:
         """Process the odds data to match our expected format"""
         if self.odds_data is None or len(self.odds_data) == 0:
             return
-        
-        # Debug: Show original odds structure
-        st.write("🔧 Processing odds data...")
         
         # Create a new processed odds dataframe
         processed_odds = []
@@ -758,10 +734,6 @@ class NFLPredictor:
         # Replace the original odds data with processed data
         if processed_odds:
             self.odds_data = pd.DataFrame(processed_odds)
-            st.success(f"✅ Processed {len(self.odds_data)} odds entries")
-        else:
-            st.warning("⚠️ No odds data could be processed")
-            self.odds_data = pd.DataFrame()
     
     def load_data(self):
         """Load schedule and odds data with SOS integration"""
@@ -1023,7 +995,6 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
     # Get game info with flexible column names
     game_info = predictor.get_game_info(game)
     if game_info is None:
-        st.error("❌ Could not extract game information")
         return
         
     home_full, away_full, game_date = game_info
@@ -1050,16 +1021,17 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
             confidence_class = get_confidence_class(win_prob_pct)
             
-            st.markdown(f'<div class="prediction-bubble {confidence_class}">🏈 {winner_abbr} to Win</div>', unsafe_allow_html=True)
-            st.markdown(f'**Probability:** {win_prob_pct:.1f}%')
+            st.markdown('<div class="bubble-container">', unsafe_allow_html=True)
+            st.markdown(f'<div class="prediction-bubble {confidence_class}">🏈 {winner_abbr} to Win<br><small>Probability: {win_prob_pct:.1f}%</small></div>', unsafe_allow_html=True)
             
             # Spread Projection in Bubble
             model_spread = predictor.convert_prob_to_spread(home_win_prob)
-            st.markdown(f'<div class="prediction-bubble">📈 Spread: {model_spread:+.1f}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="prediction-bubble">📈 Projected Spread<br><small>{model_spread:+.1f}</small></div>', unsafe_allow_html=True)
             
             # Totals Projection in Bubble
             model_total = predictor.predict_total_points(home_team, away_team)
-            st.markdown(f'<div class="prediction-bubble">🎯 Total: {model_total:.1f}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="prediction-bubble">🎯 Projected Total<br><small>{model_total:.1f} Points</small></div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)  # Close bubble-container
             
             st.markdown('</div>', unsafe_allow_html=True)  # Close projections-card
             
@@ -1070,18 +1042,20 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             
             if game_odds:
                 # Moneyline
-                if game_odds.get('home_moneyline') and game_odds.get('away_moneyline'):
+                if game_odds.get('home_moneyline') is not None and game_odds.get('away_moneyline') is not None:
                     st.markdown(f'**Moneyline:**')
-                    st.markdown(f'`{home_team}: {game_odds["home_moneyline"]:+} | {away_team}: {game_odds["away_moneyline"]:+}`')
+                    home_ml = game_odds["home_moneyline"]
+                    away_ml = game_odds["away_moneyline"]
+                    st.markdown(f'`{home_team}: {home_ml:+} | {away_team}: {away_ml:+}`')
                 
                 # Spread
-                if game_odds.get('spread'):
+                if game_odds.get('spread') is not None:
                     spread_odds = game_odds.get('spread_odds', '')
                     st.markdown(f'**Spread:**')
                     st.markdown(f'`{game_odds["spread"]:+.1f} ({spread_odds})`')
                 
                 # Total
-                if game_odds.get('total'):
+                if game_odds.get('total') is not None:
                     over_odds = game_odds.get('over_odds', '')
                     under_odds = game_odds.get('under_odds', '')
                     st.markdown(f'**Total:**')
@@ -1120,7 +1094,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             st.markdown('</div>', unsafe_allow_html=True)
             
             # Spread Pick
-            if game_odds and game_odds.get('spread'):
+            if game_odds and game_odds.get('spread') is not None:
                 vegas_spread = game_odds['spread']
                 model_spread = predictor.convert_prob_to_spread(home_win_prob)
                 
@@ -1145,7 +1119,7 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
                 st.markdown('</div>', unsafe_allow_html=True)
             
             # Totals Pick
-            if game_odds and game_odds.get('total'):
+            if game_odds and game_odds.get('total') is not None:
                 vegas_total = game_odds['total']
                 model_total = predictor.predict_total_points(home_team, away_team)
                 
@@ -1215,7 +1189,6 @@ def main():
         home_win_prob = predictor.predict_game(home_team, away_team)
         
         if home_win_prob is None:
-            st.warning(f"Could not generate prediction for {away_team} @ {home_team}")
             continue
         
         # Get scores with weather adjustment
