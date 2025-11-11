@@ -6,13 +6,14 @@ import streamlit as st
 class EnhancedNFLProjector:
     def __init__(self):
         """Initialize the enhanced projector with all available data sources"""
+        # Initialize all attributes first
         self.rb_data = None
         self.qb_data = None
         self.defense_data = None
         self.offense_data = None
         self.sos_data = None
         self.schedule_data = None
-        self.odds_data = None
+        self.odds_data = None  # Make sure this is initialized
         
         try:
             # Load player data
@@ -52,15 +53,16 @@ class EnhancedNFLProjector:
         # Load strength of schedule data
         try:
             with open('nfl_strength_of_schedule.json', 'r') as f:
-                self.sos_data = json.load(f)['sos_rankings']
+                data = json.load(f)
+                self.sos_data = data.get('sos_rankings', {})
             st.success("✅ Strength of schedule data loaded successfully!")
         except Exception as e:
             st.warning(f"⚠️ Could not load strength of schedule data: {e}")
             self.sos_data = {}
         
-        # Load schedule data - UPDATED FILENAME
+        # Load schedule data
         try:
-            with open('schedule.json', 'r') as f:  # Changed from 'week_10_schedule.json'
+            with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
                 # Handle different schedule formats
                 if 'Week 10' in schedule_data:
@@ -72,14 +74,14 @@ class EnhancedNFLProjector:
             st.warning(f"⚠️ Could not load schedule data: {e}")
             self.schedule_data = []
         
-        # Load odds data
+        # Load odds data - FIXED: Make sure odds_data is always initialized
         try:
             with open('week_10_odds.json', 'r') as f:
                 self.odds_data = json.load(f)
             st.success("✅ Odds data loaded successfully!")
         except Exception as e:
             st.warning(f"⚠️ Could not load odds data: {e}")
-            self.odds_data = []
+            self.odds_data = []  # Always initialize as empty list
     
     def _clean_data(self):
         """Clean the data by filling NaN values with appropriate defaults"""
@@ -108,7 +110,7 @@ class EnhancedNFLProjector:
     
     def _get_defense_stats(self, team_name):
         """Get defense stats for a specific team"""
-        if self.defense_data is None:
+        if self.defense_data is None or not self.defense_data:
             return None
         for team in self.defense_data:
             if team['Team'] == team_name:
@@ -117,7 +119,7 @@ class EnhancedNFLProjector:
     
     def _get_offense_stats(self, team_name):
         """Get offense stats for a specific team"""
-        if self.offense_data is None:
+        if self.offense_data is None or not self.offense_data:
             return None
         for team in self.offense_data:
             if team['Team'] == team_name:
@@ -137,8 +139,8 @@ class EnhancedNFLProjector:
             sos_value = self.sos_data[player_team].get('combined_sos', 0.5)
             context['sos_adjustment'] = 1.0 + (self._safe_float(sos_value) - 0.5) * 0.3
         
-        # Get game odds
-        if self.odds_data:
+        # Get game odds - FIXED: Check if odds_data exists and is not None
+        if hasattr(self, 'odds_data') and self.odds_data is not None:
             for odds in self.odds_data:
                 if (odds.get('home_team') == player_team and odds.get('away_team') == opponent_team) or \
                    (odds.get('home_team') == opponent_team and odds.get('away_team') == player_team):
@@ -188,6 +190,10 @@ class EnhancedNFLProjector:
     
     def project_rushing_stats(self, player_name, opponent_team, games_played=9):
         """Enhanced rushing projections for RBs and rushing QBs"""
+        # Check if we have the necessary data
+        if self.rb_data is None or self.qb_data is None:
+            raise ValueError("Player data not loaded properly")
+        
         # Check RB data first
         rb_row = self.rb_data[self.rb_data['PlayerName'] == player_name]
         if not rb_row.empty:
@@ -287,6 +293,9 @@ class EnhancedNFLProjector:
     
     def project_passing_stats(self, qb_name, opponent_team, games_played=9):
         """Enhanced QB passing projections"""
+        if self.qb_data is None:
+            raise ValueError("QB data not loaded properly")
+            
         qb_row = self.qb_data[self.qb_data['PlayerName'] == qb_name]
         if qb_row.empty:
             raise ValueError(f"QB '{qb_name}' not found")
