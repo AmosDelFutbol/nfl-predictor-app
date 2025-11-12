@@ -41,6 +41,7 @@ st.markdown("""
         margin: 1.5rem 0;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         border: 1px solid #E5E7EB;
+        overflow: hidden; /* This prevents content from overflowing */
     }
     .score-header {
         font-size: 1.8rem;
@@ -59,6 +60,7 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #3B82F6;
+        overflow: hidden; /* Contain bubbles */
     }
     .final-projections-card {
         background: #ECFDF5;
@@ -66,6 +68,7 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #10B981;
+        overflow: hidden; /* Contain bubbles */
     }
     .weather-card {
         background: #EFF6FF;
@@ -73,6 +76,7 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #60A5FA;
+        overflow: hidden; /* Contain bubbles */
     }
     .odds-card {
         background: #FEF3C7;
@@ -80,6 +84,7 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #D97706;
+        overflow: hidden; /* Contain bubbles */
     }
     .section-title {
         font-size: 1.3rem;
@@ -92,16 +97,21 @@ st.markdown("""
     .prediction-bubble {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 1.5rem 1rem;
-        border-radius: 20px;
+        padding: 1rem;
+        border-radius: 12px;
         font-weight: 600;
         text-align: center;
-        margin: 0.75rem 0;
+        margin: 0.5rem 0;
         display: block;
         width: 100%;
         box-sizing: border-box;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        border: 2px solid white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        transition: transform 0.2s ease;
+    }
+    .prediction-bubble:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
     }
     .confidence-high {
         background: linear-gradient(135deg, #10B981 0%, #059669 100%);
@@ -116,16 +126,17 @@ st.markdown("""
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        margin: 1rem 0;
+        margin: 0;
+        width: 100%;
     }
     .bubble-title {
-        font-size: 1.1rem;
+        font-size: 1rem;
         font-weight: 700;
         margin-bottom: 0.25rem;
         display: block;
     }
     .bubble-subtitle {
-        font-size: 0.9rem;
+        font-size: 0.85rem;
         font-weight: 500;
         opacity: 0.9;
         display: block;
@@ -137,6 +148,16 @@ st.markdown("""
         padding: 0.25rem 0.5rem;
         border-radius: 4px;
         font-size: 0.9rem;
+        display: inline-block;
+        margin: 0.25rem 0;
+    }
+    /* Ensure columns have proper spacing and containment */
+    .stColumn {
+        padding: 0 0.5rem;
+    }
+    /* Fix for Streamlit column layout */
+    [data-testid="column"] {
+        padding: 0 0.5rem;
     }
 </style>
 """, unsafe_allow_html=True)
