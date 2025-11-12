@@ -148,47 +148,102 @@ class EnhancedNFLProjector:
         
         try:
             # Prepare features for ML model
-            # This would need to be adapted based on your model's expected input format
             features = self._prepare_ml_features(player_name, opponent_team, position, stat_type)
             
-            if features is not None:
+            if features is not None and features.size > 0:
                 prediction = self.nfl_model.predict(features)
                 return prediction[0] if hasattr(prediction, '__len__') else prediction
-            return None
+            else:
+                st.warning(f"⚠️ Could not prepare features for ML prediction")
+                return None
         except Exception as e:
             st.warning(f"ML prediction failed: {e}")
             return None
     
     def _prepare_ml_features(self, player_name, opponent_team, position, stat_type):
-        """Prepare features for ML model prediction"""
-        # This is a placeholder - you'll need to adapt this based on your model's requirements
-        # and feature engineering
+        """Prepare features for ML model prediction - FIXED VERSION"""
         try:
-            # Example feature preparation - adjust based on your actual model
             features = []
             
             # Get player stats
+            player_stats = None
             if position == 'RB' and self.rb_data is not None:
-                player_stats = self.rb_data[self.rb_data['PlayerName'] == player_name]
+                player_stats_df = self.rb_data[self.rb_data['PlayerName'] == player_name]
+                if not player_stats_df.empty:
+                    player_stats = player_stats_df.iloc[0]
             elif position == 'QB' and self.qb_data is not None:
-                player_stats = self.qb_data[self.qb_data['PlayerName'] == player_name]
-            else:
+                player_stats_df = self.qb_data[self.qb_data['PlayerName'] == player_name]
+                if not player_stats_df.empty:
+                    player_stats = player_stats_df.iloc[0]
+            
+            if player_stats is None:
                 return None
             
-            if player_stats.empty:
-                return None
-            
-            player_stats = player_stats.iloc[0]
+            # Get defense stats
             defense_stats = self._get_defense_stats(opponent_team)
+            if defense_stats is None:
+                return None
             
-            # Add relevant features based on your model's training
-            # This is just an example - use the same features your model was trained on
-            if stat_type == 'rushing_yards':
+            # Get game context
+            player_team = player_stats['Team']
+            game_context = self.get_game_context(player_team, opponent_team)
+            
+            # COMMON FEATURES FOR ALL PREDICTIONS
+            # Player performance features (per game averages)
+            if position == 'RB':
                 features.extend([
-                    self._safe_float(player_stats.get('RushingYDS', 0)),
-                    self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)),
-                    self._safe_float(player_stats.get('TouchCarries', 0))
+                    self._safe_float(player_stats.get('RushingYDS', 0)) / 9,  # yards per game
+                    self._safe_float(player_stats.get('RushingTD', 0)) / 9,   # TDs per game
+                    self._safe_float(player_stats.get('TouchCarries', 0)) / 9, # carries per game
+                    self._safe_float(player_stats.get('ReceivingYDS', 0)) / 9, # receiving yards per game
                 ])
+            elif position == 'QB':
+                features.extend([
+                    self._safe_float(player_stats.get('PassingYDS', 0)) / 9,  # passing yards per game
+                    self._safe_float(player_stats.get('PassingTD', 0)) / 9,   # passing TDs per game
+                    self._safe_float(player_stats.get('RushingYDS', 0)) / 9,  # rushing yards per game
+                    self._safe_float(player_stats.get('RushingTD', 0)) / 9,   # rushing TDs per game
+                ])
+            
+            # Defense features
+            features.extend([
+                self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)),
+                self._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 1.0)),
+                self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230)),
+                self._safe_float(defense_stats.get('PASSING TD ALLOWED', 1.5)),
+            ])
+            
+            # Game context features
+            features.extend([
+                game_context['expected_total'],
+                abs(game_context['spread']),  # absolute value of spread
+                game_context['sos_adjustment']
+            ])
+            
+            # STAT-SPECIFIC FEATURES
+            if stat_type == 'rushing_yards':
+                if position == 'RB':
+                    features.extend([
+                        self._safe_float(player_stats.get('RushingYDS', 0)) / 9,  # current yards per game
+                        self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)),
+                    ])
+                elif position == 'QB':
+                    features.extend([
+                        self._safe_float(player_stats.get('RushingYDS', 0)) / 9,
+                        self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)) * 0.7,  # QBs face easier run defense
+                    ])
+            
+            elif stat_type == 'passing_yards':
+                features.extend([
+                    self._safe_float(player_stats.get('PassingYDS', 0)) / 9,
+                    self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230)),
+                    game_context['expected_total'] / 45.0,  # game total adjustment
+                ])
+            
+            # Ensure we have at least some features
+            if len(features) == 0:
+                st.warning("No features could be prepared for ML model")
+                return None
             
             return np.array(features).reshape(1, -1)
             
@@ -303,11 +358,13 @@ class EnhancedNFLProjector:
         
         if ml_prediction is not None:
             projections['RushingYards'] = ml_prediction
+            projections['UsedML'] = True
         else:
             projections['RushingYards'] = (
                 (rb_rush_yds_pg + def_rush_yds_allowed) / 2 * 
                 game_script * game_context['sos_adjustment']
             )
+            projections['UsedML'] = False
         
         # RUSHING TDs
         rb_rush_td_pg = self._safe_float(rb_stats['RushingTD']) / games_played
@@ -332,9 +389,6 @@ class EnhancedNFLProjector:
             projections['RushingTDs'] * 6
         )
         
-        # Add ML prediction info
-        projections['UsedML'] = ml_prediction is not None
-        
         return projections, rb_stats, defense_stats, game_context, 'RB'
     
     def _project_qb_rushing(self, qb_stats, opponent_team, games_played):
@@ -357,8 +411,10 @@ class EnhancedNFLProjector:
         
         if ml_prediction is not None:
             projections['RushingYards'] = ml_prediction
+            projections['UsedML'] = True
         else:
             projections['RushingYards'] = qb_rush_yds_pg * game_context['sos_adjustment']
+            projections['UsedML'] = False
         
         # RUSHING TDs
         qb_rush_td_pg = self._safe_float(qb_stats['RushingTD']) / games_played
@@ -373,9 +429,6 @@ class EnhancedNFLProjector:
             projections['RushingYards'] * 0.1 +
             projections['RushingTDs'] * 6
         )
-        
-        # Add ML prediction info
-        projections['UsedML'] = ml_prediction is not None
         
         return projections, qb_stats, defense_stats, game_context, 'QB'
     
@@ -408,11 +461,13 @@ class EnhancedNFLProjector:
         
         if ml_prediction is not None:
             projections['PassingYards'] = ml_prediction
+            projections['UsedML'] = True
         else:
             projections['PassingYards'] = (
                 (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
                 (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
             )
+            projections['UsedML'] = False
         
         # PASSING TDs
         qb_pass_td_pg = self._safe_float(qb_stats['PassingTD']) / games_played
@@ -427,7 +482,7 @@ class EnhancedNFLProjector:
         qb_int_pg = self._safe_float(qb_stats['PassingInt']) / games_played
         
         projections['Interceptions'] = (
-            (qb_int_pg + self._safe_float(defense_stats.get('INTERCENTIONS', 1.0))) / 2
+            (qb_int_pg + self._safe_float(defense_stats.get('INTERCEPTIONS', 1.0))) / 2
         )
         
         # PASS ATTEMPTS & COMPLETIONS
@@ -444,9 +499,6 @@ class EnhancedNFLProjector:
             projections['PassingTDs'] * 4 -
             projections['Interceptions'] * 2
         )
-        
-        # Add ML prediction info
-        projections['UsedML'] = ml_prediction is not None
         
         return projections, qb_stats, defense_stats, game_context
     
@@ -529,9 +581,9 @@ def main():
                     
                     # ML model info
                     if projections.get('UsedML'):
-                        st.info("🤖 **ML Model**: Using machine learning prediction for rushing yards")
+                        st.success("🤖 **ML Model**: Using machine learning prediction for rushing yards")
                     else:
-                        st.info("📊 **ML Model**: Using statistical calculation (ML model not available)")
+                        st.info("📊 **ML Model**: Using statistical calculation")
                     
                     # Estimate Vegas lines
                     vegas_rush_yds = projector.estimate_vegas_line(projections['RushingYards'], position, 'rushing_yards')
@@ -619,9 +671,9 @@ def main():
                     
                     # ML model info
                     if projections.get('UsedML'):
-                        st.info("🤖 **ML Model**: Using machine learning prediction for passing yards")
+                        st.success("🤖 **ML Model**: Using machine learning prediction for passing yards")
                     else:
-                        st.info("📊 **ML Model**: Using statistical calculation (ML model not available)")
+                        st.info("📊 **ML Model**: Using statistical calculation")
                     
                     # Estimate Vegas lines
                     vegas_pass_yds = projector.estimate_vegas_line(projections['PassingYards'], 'QB', 'passing_yards')
@@ -679,7 +731,7 @@ def main():
                     with st.expander("View Defense Stats"):
                         st.write(f"**{opponent_team_qb} Pass Defense Allowed Per Game:**")
                         st.write(f"- Passing: {projector._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('PASSING TD ALLOWED', 0))} TDs")
-                        st.write(f"- Interceptions: {projector._safe_float(defense_stats.get('INTERCENTIONS', 0)):.1f}")
+                        st.write(f"- Interceptions: {projector._safe_float(defense_stats.get('INTERCEPTIONS', 0)):.1f}")
                         
                 except Exception as e:
                     st.error(f"Error generating projection: {e}")
