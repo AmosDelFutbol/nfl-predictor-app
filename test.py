@@ -160,6 +160,23 @@ st.markdown("""
         padding: 0 0.5rem;
     }
 </style>
+<style>
+/* Responsive fixes for mobile */
+@media (max-width: 768px) {
+    .game-card {
+        padding: 1rem;
+    }
+    .prediction-bubble {
+        padding: 0.75rem;
+    }
+    .bubble-title {
+        font-size: 0.9rem;
+    }
+    .bubble-subtitle {
+        font-size: 0.8rem;
+    }
+}
+</style>
 """, unsafe_allow_html=True)
 
 class WeatherAPI:
