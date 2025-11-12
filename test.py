@@ -5,6 +5,7 @@ import numpy as np
 import json
 import pickle
 import requests
+import os
 from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.model_selection import train_test_split
 from datetime import datetime
@@ -17,431 +18,397 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Function to check for required data files
-def check_required_files():
-    """Check if all required data files exist"""
-    required_files = [
-        'teams_power_rating.csv',
-        'week_10_schedule.json', 
-        'week_10_odds.json',
-        'nfl_strength_of_schedule.json',
-        'spreadspoke_scores.json'
-    ]
-    
-    missing_files = []
-    for file in required_files:
-        try:
-            if file.endswith('.csv'):
-                pd.read_csv(file)
-            else:
-                with open(file, 'r') as f:
-                    json.load(f)
-        except:
-            missing_files.append(file)
-    
-    return missing_files
-
-# Custom CSS for professional styling - CLEANED UP VERSION
+# Custom CSS for professional styling
 st.markdown("""
 <style>
     .main-header {
-        font-size: 2.8rem;
-        font-weight: 800;
+        font-size: 2.5rem;
+        font-weight: 700;
         color: #1E3A8A;
         text-align: center;
         margin-bottom: 0.5rem;
-        padding: 1rem 0;
-        background: linear-gradient(135deg, #1E3A8A 0%, #3730A3 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
     }
     .sub-header {
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         color: #6B7280;
         text-align: center;
-        margin-bottom: 3rem;
-        font-weight: 500;
+        margin-bottom: 2rem;
     }
     .game-card {
         background: white;
-        border-radius: 16px;
-        padding: 2.5rem;
-        margin: 2rem 0;
-        box-shadow: 0 8px 25px -8px rgba(0, 0, 0, 0.15), 0 4px 12px -4px rgba(0, 0, 0, 0.1);
-        border: 1px solid #F3F4F6;
+        border-radius: 12px;
+        padding: 2rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        border: 1px solid #E5E7EB;
     }
     .score-header {
-        font-size: 2rem;
+        font-size: 1.8rem;
         font-weight: 700;
-        color: #1F2937;
+        color: #1E3A8A;
         text-align: center;
-        margin-bottom: 2.5rem;
-        padding: 1.5rem;
+        margin-bottom: 2rem;
+        padding: 1rem;
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        border-radius: 10px;
     }
-    .projections-section {
+    .projections-card {
         background: #F8FAFC;
-        border-radius: 12px;
-        padding: 2rem;
-        margin: 1.5rem 0;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
         border-left: 4px solid #3B82F6;
     }
-    .efficiency-section {
-        background: #FFFBEB;
-        border-radius: 12px;
-        padding: 2rem;
-        margin: 1.5rem 0;
-        border-left: 4px solid #D97706;
-    }
-    .final-section {
-        background: #F0FDF4;
-        border-radius: 12px;
-        padding: 2rem;
-        margin: 1.5rem 0;
+    .final-projections-card {
+        background: #ECFDF5;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
         border-left: 4px solid #10B981;
     }
-    .odds-section {
-        background: #FEF7FF;
-        border-radius: 12px;
-        padding: 2rem;
-        margin: 1.5rem 0;
-        border-left: 4px solid #8B5CF6;
+    .weather-card {
+        background: #EFF6FF;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-left: 4px solid #60A5FA;
+    }
+    .odds-card {
+        background: #FEF3C7;
+        border-radius: 10px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        border-left: 4px solid #D97706;
     }
     .section-title {
-        font-size: 1.4rem;
+        font-size: 1.3rem;
         font-weight: 700;
         color: #1F2937;
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.75rem;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
         border-bottom: 2px solid #E5E7EB;
     }
-    .metric-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
+    .prediction-bubble {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem 1rem;
+        border-radius: 20px;
+        font-weight: 600;
+        text-align: center;
+        margin: 0.75rem 0;
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        border: 2px solid white;
+    }
+    .confidence-high {
+        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+    }
+    .confidence-medium {
+        background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    }
+    .confidence-low {
+        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
+    }
+    .bubble-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
         margin: 1rem 0;
     }
-    .metric-item {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        border: 1px solid #E5E7EB;
-    }
-    .metric-label {
-        font-weight: 600;
-        color: #6B7280;
-        font-size: 0.9rem;
-        margin-bottom: 0.25rem;
-    }
-    .metric-value {
-        font-weight: 700;
-        color: #1F2937;
+    .bubble-title {
         font-size: 1.1rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
+        display: block;
     }
-    .probability-badge {
-        background: #1E40AF;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
+    .bubble-subtitle {
         font-size: 0.9rem;
-        display: inline-block;
-    }
-    .confidence-badge {
-        background: #059669;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-block;
-    }
-    .elo-badge {
-        background: #7C3AED;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-block;
+        font-weight: 500;
+        opacity: 0.9;
+        display: block;
     }
     .odds-value {
-        font-weight: 700;
-        color: #059669;
-        font-size: 1.1rem;
-    }
-    .positive {
-        color: #059669;
-        font-weight: 600;
-    }
-    .negative {
-        color: #DC2626;
-        font-weight: 600;
-    }
-    .team-comparison {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: 0.5rem 0;
-        padding: 0.75rem;
-        background: white;
-        border-radius: 8px;
-        border: 1px solid #E5E7EB;
-    }
-    .team-name {
-        font-weight: 700;
-        color: #1F2937;
-    }
-    .comparison-value {
-        font-weight: 600;
-        color: #6B7280;
-    }
-    .insight-item {
-        padding: 0.75rem;
-        margin: 0.5rem 0;
-        background: white;
-        border-radius: 8px;
-        border-left: 4px solid #3B82F6;
-        border-right: 1px solid #E5E7EB;
-        border-top: 1px solid #E5E7EB;
-        border-bottom: 1px solid #E5E7EB;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        background: #1F2937;
+        color: #10B981;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.9rem;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Weather Predictor Class
-class WeatherPredictor:
-    def __init__(self):
-        self.weather_analysis = {}
-        self.weather_api = WeatherAPI()
-    
-    def load_data(self):
-        """Load weather data"""
-        try:
-            with open('weather_data.json', 'r') as f:
-                self.weather_analysis = json.load(f)
-            return True
-        except:
-            self.weather_analysis = {}
-            return True
-    
-    def adjust_prediction_for_weather(self, home_full, away_full, home_score, away_score, game_date):
-        """Apply weather adjustments to scores"""
-        weather_data = {
-            'success': False,
-            'conditions': 'Unknown',
-            'temperature': 'N/A', 
-            'wind_speed': 'N/A'
-        }
-        return home_score, away_score, weather_data
-
 class WeatherAPI:
     def __init__(self):
-        self.team_stadiums = {
-            'Arizona Cardinals': 'State Farm Stadium',
-            'Atlanta Falcons': 'Mercedes-Benz Stadium',
-            'Baltimore Ravens': 'M&T Bank Stadium',
-            'Buffalo Bills': 'Highmark Stadium',
-            'Carolina Panthers': 'Bank of America Stadium',
-            'Chicago Bears': 'Soldier Field',
-            'Cincinnati Bengals': 'Paycor Stadium',
-            'Cleveland Browns': 'Cleveland Browns Stadium',
-            'Dallas Cowboys': 'AT&T Stadium',
-            'Denver Broncos': 'Empower Field at Mile High',
-            'Detroit Lions': 'Ford Field',
-            'Green Bay Packers': 'Lambeau Field',
-            'Houston Texans': 'NRG Stadium',
-            'Indianapolis Colts': 'Lucas Oil Stadium',
-            'Jacksonville Jaguars': 'TIAA Bank Field',
-            'Kansas City Chiefs': 'Arrowhead Stadium',
-            'Las Vegas Raiders': 'Allegiant Stadium',
-            'Los Angeles Chargers': 'SoFi Stadium',
-            'Los Angeles Rams': 'SoFi Stadium',
-            'Miami Dolphins': 'Hard Rock Stadium',
-            'Minnesota Vikings': 'U.S. Bank Stadium',
-            'New England Patriots': 'Gillette Stadium',
-            'New Orleans Saints': 'Caesars Superdome',
-            'New York Giants': 'MetLife Stadium',
-            'New York Jets': 'MetLife Stadium',
-            'Philadelphia Eagles': 'Lincoln Financial Field',
-            'Pittsburgh Steelers': 'Acrisure Stadium',
-            'San Francisco 49ers': 'Levi\'s Stadium',
-            'Seattle Seahawks': 'Lumen Field',
-            'Tampa Bay Buccaneers': 'Raymond James Stadium',
-            'Tennessee Titans': 'Nissan Stadium',
-            'Washington Commanders': 'FedExField'
-        }
-        
-        self.stadiums = {
-            'State Farm Stadium': {'roof_type': 'retractable'},
-            'Mercedes-Benz Stadium': {'roof_type': 'retractable'},
-            'M&T Bank Stadium': {'roof_type': 'open'},
-            'Highmark Stadium': {'roof_type': 'open'},
-            'Bank of America Stadium': {'roof_type': 'open'},
-            'Soldier Field': {'roof_type': 'open'},
-            'Paycor Stadium': {'roof_type': 'open'},
-            'Cleveland Browns Stadium': {'roof_type': 'open'},
-            'AT&T Stadium': {'roof_type': 'retractable'},
-            'Empower Field at Mile High': {'roof_type': 'open'},
-            'Ford Field': {'roof_type': 'dome'},
-            'Lambeau Field': {'roof_type': 'open'},
-            'NRG Stadium': {'roof_type': 'retractable'},
-            'Lucas Oil Stadium': {'roof_type': 'retractable'},
-            'TIAA Bank Field': {'roof_type': 'open'},
-            'Arrowhead Stadium': {'roof_type': 'open'},
-            'Allegiant Stadium': {'roof_type': 'dome'},
-            'SoFi Stadium': {'roof_type': 'open'},
-            'Hard Rock Stadium': {'roof_type': 'open'},
-            'U.S. Bank Stadium': {'roof_type': 'fixed'},
-            'Gillette Stadium': {'roof_type': 'open'},
-            'Caesars Superdome': {'roof_type': 'dome'},
-            'MetLife Stadium': {'roof_type': 'open'},
-            'Lincoln Financial Field': {'roof_type': 'open'},
-            'Acrisure Stadium': {'roof_type': 'open'},
-            'Levi\'s Stadium': {'roof_type': 'open'},
-            'Lumen Field': {'roof_type': 'open'},
-            'Raymond James Stadium': {'roof_type': 'open'},
-            'Nissan Stadium': {'roof_type': 'open'},
-            'FedExField': {'roof_type': 'open'}
-        }
-
-# ELO Processor Class
-class ELOProcessor:
-    def __init__(self):
-        self.team_elos = {}
-        self.base_elo = 1500
-        self.k_factor = 20
-        self.home_field_advantage = 24
-        
-    def load_elo_data(self):
-        """Load and process the ELO CSV with all advanced metrics"""
+        self.stadiums = None
+        self.team_stadiums = None
+        self.load_stadiums()
+    
+    def load_stadiums(self):
+        """Load stadium data"""
         try:
-            elo_df = pd.read_csv('teams_power_rating.csv')
-            st.success("✅ Successfully loaded ELO data")
-            
-            for _, row in elo_df.iterrows():
-                team = row['Team']
-                
-                # Map team names to abbreviations
-                team_abbr = self._get_team_abbreviation(team)
-                
-                if team_abbr:
-                    self.team_elos[team_abbr] = {
-                        'nfelo': row['nfelo'],
-                        'elo': row.get('Elo', row['nfelo']),
-                        'qb_adj': row['QB Adj'],
-                        'value': row['Value'],
-                        'wow_change': row['WoW'],
-                        'ytd_performance': row['YTD'],
-                        'off_epa_play': row['Play'],
-                        'off_epa_pass': row['Pass'],
-                        'off_epa_rush': row['Rush'],
-                        'def_epa_play': row['Play.1'],
-                        'def_epa_pass': row['Pass.1'],
-                        'def_epa_rush': row['Rush.1'],
-                        'net_epa': row['Play.2'],
-                        'points_for': row['For'],
-                        'points_against': row['Against'],
-                        'point_differential': row['Dif'],
-                        'wins': row['Wins'],
-                        'pythag_wins': row['Pythag'],
-                        'film_grade': row.get('Film', 5),
-                        'season': row.get('Season', 2025),
-                        'team_name': team
-                    }
-            
-            st.success(f"✅ Loaded ELO data for {len(self.team_elos)} teams")
+            with open('nfl_stadiums.json', 'r') as f:
+                data = json.load(f)
+            self.stadiums = data['stadiums']
+            self.team_stadiums = data['team_stadiums']
             return True
-            
         except Exception as e:
-            st.error(f"❌ Could not load ELO data: {e}")
-            return False
+            # Create minimal stadium data
+            self.stadiums = {
+                'Allegiant Stadium': {'city': 'Las Vegas', 'roof_type': 'domed'},
+                'Arrowhead Stadium': {'city': 'Kansas City', 'roof_type': 'open'},
+                'AT&T Stadium': {'city': 'Dallas', 'roof_type': 'retractable'},
+                'Bank of America Stadium': {'city': 'Charlotte', 'roof_type': 'open'},
+                'Caesars Superdome': {'city': 'New Orleans', 'roof_type': 'domed'},
+                'Cleveland Browns Stadium': {'city': 'Cleveland', 'roof_type': 'open'},
+                'Empower Field at Mile High': {'city': 'Denver', 'roof_type': 'open'},
+                'Ford Field': {'city': 'Detroit', 'roof_type': 'domed'},
+                'Gillette Stadium': {'city': 'Foxborough', 'roof_type': 'open'},
+                'Hard Rock Stadium': {'city': 'Miami', 'roof_type': 'open'},
+                'Highmark Stadium': {'city': 'Buffalo', 'roof_type': 'open'},
+                'Lambeau Field': {'city': 'Green Bay', 'roof_type': 'open'},
+                "Levi's Stadium": {'city': 'Santa Clara', 'roof_type': 'open'},
+                'Lucas Oil Stadium': {'city': 'Indianapolis', 'roof_type': 'retractable'},
+                'Lumen Field': {'city': 'Seattle', 'roof_type': 'open'},
+                'M&T Bank Stadium': {'city': 'Baltimore', 'roof_type': 'open'},
+                'MetLife Stadium': {'city': 'East Rutherford', 'roof_type': 'open'},
+                'Lincoln Financial Field': {'city': 'Philadelphia', 'roof_type': 'open'},
+                'Nissan Stadium': {'city': 'Nashville', 'roof_type': 'open'},
+                'NRG Stadium': {'city': 'Houston', 'roof_type': 'retractable'},
+                'Paycor Stadium': {'city': 'Cincinnati', 'roof_type': 'open'},
+                'Raymond James Stadium': {'city': 'Tampa', 'roof_type': 'open'},
+                'SoFi Stadium': {'city': 'Los Angeles', 'roof_type': 'domed'},
+                'Soldier Field': {'city': 'Chicago', 'roof_type': 'open'},
+                'State Farm Stadium': {'city': 'Glendale', 'roof_type': 'retractable'},
+                'TIAA Bank Field': {'city': 'Jacksonville', 'roof_type': 'open'},
+                'U.S. Bank Stadium': {'city': 'Minneapolis', 'roof_type': 'domed'}
+            }
+            
+            self.team_stadiums = {
+                'Arizona Cardinals': 'State Farm Stadium',
+                'Atlanta Falcons': 'Mercedes-Benz Stadium',
+                'Baltimore Ravens': 'M&T Bank Stadium',
+                'Buffalo Bills': 'Highmark Stadium',
+                'Carolina Panthers': 'Bank of America Stadium',
+                'Chicago Bears': 'Soldier Field',
+                'Cincinnati Bengals': 'Paycor Stadium',
+                'Cleveland Browns': 'Cleveland Browns Stadium',
+                'Dallas Cowboys': 'AT&T Stadium',
+                'Denver Broncos': 'Empower Field at Mile High',
+                'Detroit Lions': 'Ford Field',
+                'Green Bay Packers': 'Lambeau Field',
+                'Houston Texans': 'NRG Stadium',
+                'Indianapolis Colts': 'Lucas Oil Stadium',
+                'Jacksonville Jaguars': 'TIAA Bank Field',
+                'Kansas City Chiefs': 'Arrowhead Stadium',
+                'Las Vegas Raiders': 'Allegiant Stadium',
+                'Los Angeles Chargers': 'SoFi Stadium',
+                'Los Angeles Rams': 'SoFi Stadium',
+                'Miami Dolphins': 'Hard Rock Stadium',
+                'Minnesota Vikings': 'U.S. Bank Stadium',
+                'New England Patriots': 'Gillette Stadium',
+                'New Orleans Saints': 'Caesars Superdome',
+                'New York Giants': 'MetLife Stadium',
+                'New York Jets': 'MetLife Stadium',
+                'Philadelphia Eagles': 'Lincoln Financial Field',
+                'Pittsburgh Steelers': 'Acrisure Stadium',
+                'San Francisco 49ers': "Levi's Stadium",
+                'Seattle Seahawks': 'Lumen Field',
+                'Tampa Bay Buccaneers': 'Raymond James Stadium',
+                'Tennessee Titans': 'Nissan Stadium',
+                'Washington Commanders': 'FedExField'
+            }
+            return True
     
-    def _get_team_abbreviation(self, team_name):
-        """Convert team names from CSV to abbreviations"""
-        team_mapping = {
-            'KC': 'KC', 'Kansas City': 'KC', 'Kansas City Chiefs': 'KC',
-            'LAR': 'LAR', 'Los Angeles Rams': 'LAR', 'LA Rams': 'LAR',
-            'SF': 'SF', 'San Francisco': 'SF', 'San Francisco 49ers': 'SF',
-            'BAL': 'BAL', 'Baltimore': 'BAL', 'Baltimore Ravens': 'BAL',
-            'PHI': 'PHI', 'Philadelphia': 'PHI', 'Philadelphia Eagles': 'PHI',
-            'DAL': 'DAL', 'Dallas': 'DAL', 'Dallas Cowboys': 'DAL',
-            'BUF': 'BUF', 'Buffalo': 'BUF', 'Buffalo Bills': 'BUF',
-            'MIA': 'MIA', 'Miami': 'MIA', 'Miami Dolphins': 'MIA',
-            'DET': 'DET', 'Detroit': 'DET', 'Detroit Lions': 'DET',
-            'GB': 'GB', 'Green Bay': 'GB', 'Green Bay Packers': 'GB',
-            'MIN': 'MIN', 'Minnesota': 'MIN', 'Minnesota Vikings': 'MIN',
-            'CHI': 'CHI', 'Chicago': 'CHI', 'Chicago Bears': 'CHI',
-            'NO': 'NO', 'New Orleans': 'NO', 'New Orleans Saints': 'NO',
-            'TB': 'TB', 'Tampa Bay': 'TB', 'Tampa Bay Buccaneers': 'TB',
-            'ATL': 'ATL', 'Atlanta': 'ATL', 'Atlanta Falcons': 'ATL',
-            'CAR': 'CAR', 'Carolina': 'CAR', 'Carolina Panthers': 'CAR',
-            'SEA': 'SEA', 'Seattle': 'SEA', 'Seattle Seahawks': 'SEA',
-            'ARI': 'ARI', 'Arizona': 'ARI', 'Arizona Cardinals': 'ARI',
-            'LAC': 'LAC', 'Los Angeles Chargers': 'LAC', 'LA Chargers': 'LAC',
-            'LV': 'LV', 'Las Vegas': 'LV', 'Las Vegas Raiders': 'LV',
-            'DEN': 'DEN', 'Denver': 'DEN', 'Denver Broncos': 'DEN',
-            'CIN': 'CIN', 'Cincinnati': 'CIN', 'Cincinnati Bengals': 'CIN',
-            'CLE': 'CLE', 'Cleveland': 'CLE', 'Cleveland Browns': 'CLE',
-            'PIT': 'PIT', 'Pittsburgh': 'PIT', 'Pittsburgh Steelers': 'PIT',
-            'IND': 'IND', 'Indianapolis': 'IND', 'Indianapolis Colts': 'IND',
-            'HOU': 'HOU', 'Houston': 'HOU', 'Houston Texans': 'HOU',
-            'JAX': 'JAX', 'Jacksonville': 'JAX', 'Jacksonville Jaguars': 'JAX',
-            'TEN': 'TEN', 'Tennessee': 'TEN', 'Tennessee Titans': 'TEN',
-            'NYJ': 'NYJ', 'New York Jets': 'NYJ',
-            'NYG': 'NYG', 'New York Giants': 'NYG',
-            'NE': 'NE', 'New England': 'NE', 'New England Patriots': 'NE',
-            'WAS': 'WAS', 'Washington': 'WAS', 'Washington Commanders': 'WAS'
+    def get_stadium_coordinates(self):
+        """Coordinates for all NFL stadiums"""
+        return {
+            'Allegiant Stadium': (36.0908, -115.1835),
+            'Arrowhead Stadium': (39.0489, -94.4839),
+            'AT&T Stadium': (32.7473, -97.0945),
+            'Bank of America Stadium': (35.2258, -80.8528),
+            'Caesars Superdome': (29.9511, -90.0811),
+            'Cleveland Browns Stadium': (41.5061, -81.6995),
+            'Empower Field at Mile High': (39.7439, -105.0200),
+            'FedExField': (38.9076, -76.8645),
+            'Ford Field': (42.3400, -83.0456),
+            'GEHA Field at Arrowhead Stadium': (39.0489, -94.4839),
+            'Gillette Stadium': (42.0909, -71.2643),
+            'Hard Rock Stadium': (25.9580, -80.2389),
+            'Highmark Stadium': (42.7738, -78.7870),
+            'Lambeau Field': (44.5013, -88.0622),
+            "Levi's Stadium": (37.4030, -121.9700),
+            'Lucas Oil Stadium': (39.7601, -86.1639),
+            'Lumen Field': (47.5952, -122.3316),
+            'M&T Bank Stadium': (39.2781, -76.6227),
+            'MetLife Stadium': (40.8135, -74.0745),
+            'Lincoln Financial Field': (39.9008, -75.1675),
+            'Nissan Stadium': (36.1665, -86.7713),
+            'NRG Stadium': (29.6847, -95.4108),
+            'Paycor Stadium': (39.0955, -84.5160),
+            'Raymond James Stadium': (27.9759, -82.5033),
+            'SoFi Stadium': (33.9535, -118.3389),
+            'Soldier Field': (41.8623, -87.6167),
+            'State Farm Stadium': (33.5276, -112.2626),
+            'TIAA Bank Field': (30.3239, -81.6373),
+            'U.S. Bank Stadium': (44.9732, -93.2580)
         }
-        return team_mapping.get(team_name, None)
     
-    def get_team_elo(self, team_abbr):
-        """Get ELO data for a team by abbreviation"""
-        return self.team_elos.get(team_abbr, {
-            'nfelo': self.base_elo, 'elo': self.base_elo, 'qb_adj': 0, 'value': 0,
-            'wow_change': 0, 'ytd_performance': 0, 'off_epa_play': 0, 'off_epa_pass': 0,
-            'off_epa_rush': 0, 'def_epa_play': 0, 'def_epa_pass': 0, 'def_epa_rush': 0,
-            'net_epa': 0, 'points_for': 0, 'points_against': 0, 'point_differential': 0,
-            'wins': 0, 'pythag_wins': 0, 'film_grade': 5, 'season': 2025, 'team_name': team_abbr
-        })
+    def get_weather_for_stadium(self, stadium_name, game_date=None):
+        """Get weather for a specific stadium using NWS API"""
+        if stadium_name not in self.stadiums:
+            return self.get_mock_weather(stadium_name, game_date)
+        
+        coordinates = self.get_stadium_coordinates()
+        if stadium_name in coordinates:
+            lat, lon = coordinates[stadium_name]
+            weather = self.get_weather_nws(lat, lon)
+            if weather['success']:
+                return weather
+        
+        # Fallback to mock data
+        return self.get_mock_weather(stadium_name, game_date)
     
-    def calculate_elo_win_probability(self, home_team, away_team):
-        """Calculate win probability based on ELO difference"""
-        home_data = self.get_team_elo(home_team)
-        away_data = self.get_team_elo(away_team)
+    def get_weather_nws(self, lat, lon):
+        """National Weather Service API (free, no key needed)"""
+        try:
+            points_url = f"https://api.weather.gov/points/{lat},{lon}"
+            response = requests.get(points_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=5)
+            
+            if response.status_code == 200:
+                points_data = response.json()
+                forecast_url = points_data['properties']['forecast']
+                
+                forecast_response = requests.get(forecast_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=5)
+                forecast_data = forecast_response.json()
+                
+                current_weather = forecast_data['properties']['periods'][0]
+                
+                # Extract wind speed number from string like "10 mph"
+                wind_speed_str = current_weather['windSpeed'].split()[0]
+                wind_speed = float(wind_speed_str) if wind_speed_str.replace('.', '').isdigit() else 10
+                
+                return {
+                    'temperature': current_weather['temperature'],
+                    'wind_speed': wind_speed,
+                    'conditions': current_weather['shortForecast'],
+                    'is_raining': any(word in current_weather['shortForecast'].lower() for word in ['rain', 'shower', 'storm', 'drizzle']),
+                    'service': 'nws',
+                    'success': True
+                }
+        except Exception as e:
+            pass
         
-        home_elo = home_data['nfelo'] + self.home_field_advantage
-        away_elo = away_data['nfelo']
-        
-        # ELO win probability formula
-        elo_diff = home_elo - away_elo
-        win_prob = 1 / (1 + 10 ** (-elo_diff / 400))
-        
-        return win_prob
+        return {'success': False, 'temperature': 65, 'wind_speed': 8, 'conditions': 'Unknown', 'is_raining': False, 'service': 'mock'}
     
-    def get_matchup_analysis(self, home_team, away_team):
-        """Generate detailed matchup analysis using ELO metrics"""
-        home_data = self.get_team_elo(home_team)
-        away_data = self.get_team_elo(away_team)
+    def get_mock_weather(self, stadium_name, game_date=None):
+        """Fallback mock weather data"""
+        stadium = self.stadiums.get(stadium_name, {})
+        city = stadium.get('city', 'Unknown')
         
-        analysis = {
-            'elo_advantage': home_data['nfelo'] - away_data['nfelo'],
-            'offensive_matchup': home_data['off_epa_play'] - away_data['def_epa_play'],
-            'defensive_matchup': away_data['off_epa_play'] - home_data['def_epa_play'],
-            'qb_advantage': home_data['qb_adj'] - away_data['qb_adj'],
-            'momentum_advantage': home_data['wow_change'] - away_data['wow_change'],
-            'efficiency_advantage': home_data['net_epa'] - away_data['net_epa'],
-            'home_elo': home_data['nfelo'],
-            'away_elo': away_data['nfelo']
-        }
+        month = datetime.now().month if not game_date else datetime.strptime(game_date, '%Y-%m-%d').month
         
-        return analysis
+        # Simple mock based on city and month
+        if city in ['Green Bay', 'Buffalo', 'Chicago', 'Cleveland']:
+            if month in [12, 1, 2]:
+                return {'temperature': 25, 'wind_speed': 15, 'is_raining': False, 'service': 'mock', 'success': True}
+            elif month in [11, 3]:
+                return {'temperature': 45, 'wind_speed': 12, 'is_raining': True, 'service': 'mock', 'success': True}
+        
+        return {'temperature': 65, 'wind_speed': 8, 'is_raining': False, 'service': 'mock', 'success': True}
 
-# Enhanced NFLPredictor with ELO integration
+class WeatherPredictor:
+    def __init__(self):
+        self.weather_analysis = None
+        self.weather_api = WeatherAPI()
+        
+    def load_data(self):
+        """Load weather analysis data"""
+        try:
+            with open('nfl_weather_analysis.json', 'r') as f:
+                self.weather_analysis = json.load(f)
+            return True
+        except Exception as e:
+            # Create minimal weather analysis
+            self.weather_analysis = {
+                "average_impact": {
+                    "rain": -2.5,
+                    "wind_15_20": -1.5,
+                    "wind_20_plus": -3.0,
+                    "cold_32_40": -1.0,
+                    "cold_below_32": -2.0
+                }
+            }
+            return True
+    
+    def get_stadium_weather_impact(self, stadium_name, temperature, wind_speed, is_raining=False):
+        """Calculate weather impact for a specific stadium"""
+        if stadium_name not in self.weather_api.stadiums:
+            return 0, 0  # No adjustment
+        
+        stadium = self.weather_api.stadiums[stadium_name]
+        roof_type = stadium['roof_type']
+        
+        # If domed stadium, weather has minimal impact
+        if roof_type == 'domed':
+            return 0, 0
+        
+        # If retractable roof and bad weather, likely closed
+        if roof_type == 'retractable' and (is_raining or temperature < 40 or wind_speed > 20):
+            return 0, 0
+        
+        # Calculate point adjustment based on our historical analysis
+        point_adjustment = 0
+        
+        # Temperature impact
+        if temperature <= 32:
+            point_adjustment -= 2.0
+        elif temperature <= 45:
+            point_adjustment -= 1.0
+        
+        # Wind impact
+        if wind_speed > 20:
+            point_adjustment -= 2.0
+        elif wind_speed > 15:
+            point_adjustment -= 1.0
+        
+        # Rain impact
+        if is_raining:
+            point_adjustment -= 2.0
+        
+        return point_adjustment, 0
+    
+    def adjust_prediction_for_weather(self, home_team, away_team, projected_home_score, projected_away_score, game_date):
+        """Adjust scores based on weather conditions"""
+        # Get home stadium
+        if home_team not in self.weather_api.team_stadiums:
+            return projected_home_score, projected_away_score, None
+        
+        stadium_name = self.weather_api.team_stadiums[home_team]
+        
+        # Get weather data
+        weather = self.weather_api.get_weather_for_stadium(stadium_name, game_date)
+        
+        if not weather.get('success', False):
+            return projected_home_score, projected_away_score, weather
+        
+        # Get weather impact
+        point_adj, spread_adj = self.get_stadium_weather_impact(
+            stadium_name, 
+            weather['temperature'],
+            weather['wind_speed'],
+            weather['is_raining']
+        )
+        
+        # Apply adjustments
+        adjusted_home_score = max(0, projected_home_score + point_adj)
+        adjusted_away_score = max(0, projected_away_score + point_adj)
+        
+        return adjusted_home_score, adjusted_away_score, weather
+
 class NFLPredictor:
     def __init__(self):
         self.model = None
@@ -449,7 +416,6 @@ class NFLPredictor:
         self.odds_data = None
         self.team_stats = {}
         self.weather_predictor = WeatherPredictor()
-        self.elo_processor = ELOProcessor()
         self.team_mapping = {
             'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
             'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
@@ -471,175 +437,324 @@ class NFLPredictor:
                 sos_data = json.load(f)
             return sos_data['sos_rankings']
         except Exception as e:
+            # Return empty SOS data
             return {}
 
     def load_model(self):
         """Load or train a simple model"""
         try:
-            with open('nfl_model.pkl', 'rb') as f:
-                self.model = pickle.load(f)
-            return True
-        except:
+            # First try to load the pickle file
+            if os.path.exists('nfl_model.pkl'):
+                with open('nfl_model.pkl', 'rb') as f:
+                    loaded_data = pickle.load(f)
+                    
+                # Check if it's a model or a dictionary
+                if hasattr(loaded_data, 'predict_proba'):
+                    self.model = loaded_data
+                    return True
+                else:
+                    st.warning("⚠️ Loaded object is not a model, training new model...")
+            
+            # If no model file or invalid, train a new one
+            return self.train_simple_model()
+            
+        except Exception as e:
+            st.warning(f"⚠️ Model loading failed: {e}. Training new model...")
             return self.train_simple_model()
     
     def train_simple_model(self):
         """Train a simple model quickly"""
         try:
-            with open('spreadspoke_scores.json', 'r') as f:
-                games = pd.DataFrame(json.load(f))
+            # Create synthetic training data
+            np.random.seed(42)
+            n_samples = 1000
             
-            # Simple data cleaning
-            games = games[games['score_home'].notna() & games['score_away'].notna()]
-            games['schedule_date'] = pd.to_datetime(games['schedule_date'])
-            games = games[games['schedule_date'].dt.year >= 2020]
-            games['home_win'] = (games['score_home'] > games['score_away']).astype(int)
+            # Generate realistic features: [win_pct, points_for, points_against] for home and away
+            X = np.random.rand(n_samples, 7)
             
-            # Simple team stats
-            all_teams = list(set(games['team_home'].unique()) | set(games['team_away'].unique()))
-            team_stats = {}
+            # Make features more realistic
+            X[:, 0] = X[:, 0] * 0.8 + 0.1  # home_win_pct between 0.1-0.9
+            X[:, 1] = X[:, 1] * 20 + 15    # home_points_for between 15-35
+            X[:, 2] = X[:, 2] * 15 + 15    # home_points_against between 15-30
+            X[:, 3] = X[:, 3] * 0.8 + 0.1  # away_win_pct between 0.1-0.9
+            X[:, 4] = X[:, 4] * 20 + 15    # away_points_for between 15-35
+            X[:, 5] = X[:, 5] * 15 + 15    # away_points_against between 15-30
+            X[:, 6] = 1                    # home_field_advantage
             
-            for team in all_teams:
-                team_games = games[(games['team_home'] == team) | (games['team_away'] == team)].copy()
-                team_games = team_games.sort_values('schedule_date')
-                team_games['is_home'] = (team_games['team_home'] == team).astype(int)
-                team_games['team_score'] = np.where(team_games['team_home'] == team, 
-                                                   team_games['score_home'], 
-                                                   team_games['score_away'])
-                team_games['opponent_score'] = np.where(team_games['team_home'] == team, 
-                                                      team_games['score_away'], 
-                                                      team_games['score_away'])
-                team_games['win'] = (team_games['team_score'] > team_games['opponent_score']).astype(int)
-                team_games['win_pct'] = team_games['win'].rolling(8, min_periods=1).mean()
-                team_games['points_for_avg'] = team_games['team_score'].rolling(8, min_periods=1).mean()
-                team_games['points_against_avg'] = team_games['opponent_score'].rolling(8, min_periods=1).mean()
-                
-                for _, row in team_games.iterrows():
-                    date = row['schedule_date']
-                    if team not in team_stats:
-                        team_stats[team] = {}
-                    team_stats[team][date] = {
-                        'win_pct': row['win_pct'],
-                        'points_for_avg': row['points_for_avg'],
-                        'points_against_avg': row['points_against_avg']
-                    }
+            # Generate targets based on reasonable probabilities
+            home_advantage = 0.03  # Home field advantage factor
+            home_win_probs = (X[:, 0] - X[:, 3]) * 0.5 + 0.5 + home_advantage
+            home_win_probs = np.clip(home_win_probs, 0.1, 0.9)
             
-            # Create features
-            features = []
-            targets = []
-            
-            for _, game in games.iterrows():
-                home_team = game['team_home']
-                away_team = game['team_away']
-                game_date = game['schedule_date']
-                
-                home_stats = None
-                away_stats = None
-                
-                if home_team in team_stats:
-                    previous_dates = [d for d in team_stats[home_team].keys() if d < game_date]
-                    if previous_dates:
-                        latest_date = max(previous_dates)
-                        home_stats = team_stats[home_team][latest_date]
-                
-                if away_team in team_stats:
-                    previous_dates = [d for d in team_stats[away_team].keys() if d < game_date]
-                    if previous_dates:
-                        latest_date = max(previous_dates)
-                        away_stats = team_stats[away_team][latest_date]
-                
-                if home_stats and away_stats:
-                    feature_vector = [
-                        home_stats['win_pct'],
-                        home_stats['points_for_avg'], 
-                        home_stats['points_against_avg'],
-                        away_stats['win_pct'],
-                        away_stats['points_for_avg'],
-                        away_stats['points_against_avg'],
-                        1  # Home field advantage
-                    ]
-                    features.append(feature_vector)
-                    targets.append(game['home_win'])
+            # Generate binary outcomes
+            y = (np.random.rand(n_samples) < home_win_probs).astype(int)
             
             # Train model
-            X = np.array(features)
-            y = np.array(targets)
-            X = np.nan_to_num(X)
+            self.model = RandomForestClassifier(
+                n_estimators=100, 
+                random_state=42, 
+                max_depth=10,
+                min_samples_split=10
+            )
+            self.model.fit(X, y)
             
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            
-            self.model = RandomForestClassifier(n_estimators=50, random_state=42, max_depth=10)
-            self.model.fit(X_train, y_train)
+            # Save the model
+            with open('nfl_model.pkl', 'wb') as f:
+                pickle.dump(self.model, f)
             
             return True
             
         except Exception as e:
             st.error(f"❌ Model training failed: {e}")
+            # Create a fallback model
+            self.model = None
             return False
     
     def get_team_abbreviation(self, full_name):
         """Convert full team name to abbreviation"""
         return self.team_mapping.get(full_name, full_name)
     
-    def load_data(self):
-        """Load schedule and odds data with SOS and ELO integration"""
+    def find_column_name(self, series, possible_names):
+        """Find the correct column name from a list of possibilities in a Series"""
+        for name in possible_names:
+            if name in series.index:
+                return name
+        return None
+    
+    def load_schedule_data(self):
+        """Load schedule data from schedule.json with flexible column names"""
         try:
-            # Load schedule
-            with open('week_10_schedule.json', 'r') as f:
+            with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-                self.schedule = pd.DataFrame(schedule_data['Week 10'])
             
-            # Load odds
-            with open('week_10_odds.json', 'r') as f:
-                odds_data = json.load(f)
-                self.odds_data = pd.DataFrame(odds_data)
-            
-            # Load SOS data
-            sos_data = self.load_sos_data()
-            
-            # Load ELO data
-            self.elo_processor.load_elo_data()
-            
-            # Load weather integration
-            self.weather_predictor.load_data()
-
-            # Create default team stats with SOS
-            default_stats = {
-                'KC': [0.75, 28.5, 19.2], 'BUF': [0.65, 26.8, 21.1], 'SF': [0.80, 30.1, 18.5],
-                'PHI': [0.70, 27.3, 20.8], 'DAL': [0.68, 26.9, 21.3], 'BAL': [0.72, 27.8, 19.8],
-                'MIA': [0.66, 29.2, 23.1], 'CIN': [0.62, 25.7, 22.4], 'GB': [0.58, 24.3, 23.7],
-                'DET': [0.64, 26.1, 22.9], 'LAR': [0.59, 25.8, 23.5], 'SEA': [0.55, 24.2, 24.8],
-                'LV': [0.45, 21.8, 25.9], 'DEN': [0.52, 23.1, 24.2], 'LAC': [0.57, 25.3, 24.1],
-                'NE': [0.35, 18.9, 27.3], 'NYJ': [0.42, 20.5, 26.1], 'CHI': [0.48, 22.7, 25.3],
-                'MIN': [0.53, 24.8, 23.9], 'NO': [0.51, 23.5, 24.4], 'ATL': [0.49, 22.9, 24.7],
-                'CAR': [0.30, 17.8, 28.5], 'JAX': [0.56, 24.6, 23.8], 'IND': [0.54, 24.1, 24.0],
-                'HOU': [0.50, 23.3, 24.5], 'TEN': [0.47, 22.4, 25.1], 'CLE': [0.61, 25.2, 22.6],
-                'PIT': [0.58, 23.9, 23.4], 'NYG': [0.40, 19.8, 26.8], 'WAS': [0.43, 21.2, 26.3],
-                'ARI': [0.46, 22.1, 25.6], 'TB': [0.55, 24.5, 24.2]
-            }
-            
-            # Integrate SOS into team stats
-            for team_abbr in default_stats.keys():
-                # Find full team name
-                full_name = None
-                for full, abbr in self.team_mapping.items():
-                    if abbr == team_abbr:
-                        full_name = full
-                        break
-                
-                if full_name and full_name in sos_data:
-                    sos_rating = sos_data[full_name]['combined_sos']
-                    # Add SOS as 4th element: [win_pct, points_for, points_against, sos]
-                    default_stats[team_abbr] = default_stats[team_abbr] + [sos_rating]
+            # Handle different schedule formats
+            if isinstance(schedule_data, dict):
+                if 'games' in schedule_data:
+                    self.schedule = pd.DataFrame(schedule_data['games'])
+                elif 'week' in schedule_data:
+                    self.schedule = pd.DataFrame(schedule_data['week'])
+                elif any(key in schedule_data for key in ['home', 'away', 'home_team', 'away_team']):
+                    # Single game format
+                    self.schedule = pd.DataFrame([schedule_data])
                 else:
-                    # Default average SOS if not available
-                    default_stats[team_abbr] = default_stats[team_abbr] + [0.5]
-            
-            self.team_stats = default_stats
-            
+                    # Try to find the first list in the dictionary
+                    for key, value in schedule_data.items():
+                        if isinstance(value, list):
+                            self.schedule = pd.DataFrame(value)
+                            break
+                    else:
+                        st.error("❓ Could not find game data in schedule.json")
+                        return False
+            elif isinstance(schedule_data, list):
+                self.schedule = pd.DataFrame(schedule_data)
+            else:
+                st.error("❓ Unknown schedule format")
+                return False
+                
             return True
+            
         except Exception as e:
-            st.error(f"❌ Error loading data: {e}")
+            st.error(f"❌ Failed to load schedule: {e}")
+            # Create sample schedule as fallback
+            sample_games = [
+                {'home': 'Kansas City Chiefs', 'away': 'Philadelphia Eagles', 'date': '2024-11-15'},
+                {'home': 'San Francisco 49ers', 'away': 'Dallas Cowboys', 'date': '2024-11-15'},
+                {'home': 'Buffalo Bills', 'away': 'Miami Dolphins', 'date': '2024-11-15'}
+            ]
+            self.schedule = pd.DataFrame(sample_games)
+            return True
+    
+    def load_odds_data(self):
+        """Load odds data from odds.json with flexible column names"""
+        try:
+            with open('odds.json', 'r') as f:
+                odds_data = json.load(f)
+            
+            # Handle different odds formats
+            if isinstance(odds_data, dict):
+                if 'odds' in odds_data:
+                    self.odds_data = pd.DataFrame(odds_data['odds'])
+                elif any(key in odds_data for key in ['home_team', 'away_team', 'market']):
+                    # Single odds entry
+                    self.odds_data = pd.DataFrame([odds_data])
+                else:
+                    # Try to find the first list in the dictionary
+                    for key, value in odds_data.items():
+                        if isinstance(value, list):
+                            self.odds_data = pd.DataFrame(value)
+                            break
+                    else:
+                        self.odds_data = pd.DataFrame()
+            elif isinstance(odds_data, list):
+                self.odds_data = pd.DataFrame(odds_data)
+            else:
+                self.odds_data = pd.DataFrame()
+                
+            return True
+            
+        except Exception as e:
+            self.odds_data = pd.DataFrame()
+            return True
+    
+    def get_game_info(self, game):
+        """Extract home and away team information from game data with flexible column names"""
+        # Try different possible column names for home team
+        home_col = self.find_column_name(game, ['home', 'home_team', 'Home', 'HomeTeam', 'homeTeam'])
+        away_col = self.find_column_name(game, ['away', 'away_team', 'Away', 'AwayTeam', 'awayTeam'])
+        date_col = self.find_column_name(game, ['date', 'game_date', 'Date', 'gameDate'])
+        
+        if home_col is None or away_col is None:
+            return None, None, None
+        
+        home_full = game[home_col]
+        away_full = game[away_col]
+        game_date = game[date_col] if date_col and pd.notna(game[date_col]) else '2024-11-15'
+        
+        return home_full, away_full, game_date
+    
+    def process_odds_data(self):
+        """Process the odds data to match our expected format"""
+        if self.odds_data is None or len(self.odds_data) == 0:
+            return
+        
+        # Create a new processed odds dataframe
+        processed_odds = []
+        
+        for _, row in self.odds_data.iterrows():
+            home_team = row.get('home_team')
+            away_team = row.get('away_team')
+            market = row.get('market')
+            
+            if not home_team or not away_team or not market:
+                continue
+            
+            # Handle different market types
+            if market == 'h2h':
+                # Moneyline odds
+                label_1 = row.get('label_1')
+                odd_1 = row.get('odd_1')
+                label_2 = row.get('label_2') 
+                odd_2 = row.get('odd_2')
+                
+                if label_1 and odd_1:
+                    processed_odds.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'market': 'h2h',
+                        'label': label_1,
+                        'price': odd_1
+                    })
+                
+                if label_2 and odd_2:
+                    processed_odds.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'market': 'h2h',
+                        'label': label_2,
+                        'price': odd_2
+                    })
+            
+            elif market == 'spreads':
+                # Spread odds
+                label_1 = row.get('label_1')
+                point_1 = row.get('point_1')
+                odd_1 = row.get('odd_1')
+                
+                if label_1 and point_1 is not None:
+                    processed_odds.append({
+                        'home_team': home_team,
+                        'away_team': away_team,
+                        'market': 'spreads',
+                        'label': label_1,
+                        'point': point_1,
+                        'price': odd_1
+                    })
+            
+            elif market == 'totals':
+                # Total points odds
+                point_1 = row.get('point_1')
+                label_1 = row.get('label_1')
+                odd_1 = row.get('odd_1')
+                label_2 = row.get('label_2')
+                odd_2 = row.get('odd_2')
+                
+                if point_1 is not None:
+                    if label_1 and odd_1:
+                        processed_odds.append({
+                            'home_team': home_team,
+                            'away_team': away_team,
+                            'market': 'totals',
+                            'label': label_1,
+                            'point': point_1,
+                            'price': odd_1
+                        })
+                    
+                    if label_2 and odd_2:
+                        processed_odds.append({
+                            'home_team': home_team,
+                            'away_team': away_team,
+                            'market': 'totals',
+                            'label': label_2,
+                            'point': point_1,  # Same point value for over/under
+                            'price': odd_2
+                        })
+        
+        # Replace the original odds data with processed data
+        if processed_odds:
+            self.odds_data = pd.DataFrame(processed_odds)
+    
+    def load_data(self):
+        """Load schedule and odds data with SOS integration"""
+        # Load schedule data
+        if not self.load_schedule_data():
+            st.error("Failed to load schedule data")
             return False
+        
+        # Load odds data
+        if not self.load_odds_data():
+            st.warning("⚠️ Odds data not available, continuing without Vegas odds")
+        
+        # Process odds data to standard format
+        self.process_odds_data()
+        
+        # Load SOS data
+        sos_data = self.load_sos_data()
+        
+        # Load weather integration
+        self.weather_predictor.load_data()
+
+        # Create default team stats with SOS
+        default_stats = {
+            'KC': [0.75, 28.5, 19.2, 0.5], 'BUF': [0.65, 26.8, 21.1, 0.5], 'SF': [0.80, 30.1, 18.5, 0.5],
+            'PHI': [0.70, 27.3, 20.8, 0.5], 'DAL': [0.68, 26.9, 21.3, 0.5], 'BAL': [0.72, 27.8, 19.8, 0.5],
+            'MIA': [0.66, 29.2, 23.1, 0.5], 'CIN': [0.62, 25.7, 22.4, 0.5], 'GB': [0.58, 24.3, 23.7, 0.5],
+            'DET': [0.64, 26.1, 22.9, 0.5], 'LAR': [0.59, 25.8, 23.5, 0.5], 'SEA': [0.55, 24.2, 24.8, 0.5],
+            'LV': [0.45, 21.8, 25.9, 0.5], 'DEN': [0.52, 23.1, 24.2, 0.5], 'LAC': [0.57, 25.3, 24.1, 0.5],
+            'NE': [0.35, 18.9, 27.3, 0.5], 'NYJ': [0.42, 20.5, 26.1, 0.5], 'CHI': [0.48, 22.7, 25.3, 0.5],
+            'MIN': [0.53, 24.8, 23.9, 0.5], 'NO': [0.51, 23.5, 24.4, 0.5], 'ATL': [0.49, 22.9, 24.7, 0.5],
+            'CAR': [0.30, 17.8, 28.5, 0.5], 'JAX': [0.56, 24.6, 23.8, 0.5], 'IND': [0.54, 24.1, 24.0, 0.5],
+            'HOU': [0.50, 23.3, 24.5, 0.5], 'TEN': [0.47, 22.4, 25.1, 0.5], 'CLE': [0.61, 25.2, 22.6, 0.5],
+            'PIT': [0.58, 23.9, 23.4, 0.5], 'NYG': [0.40, 19.8, 26.8, 0.5], 'WAS': [0.43, 21.2, 26.3, 0.5],
+            'ARI': [0.46, 22.1, 25.6, 0.5], 'TB': [0.55, 24.5, 24.2, 0.5]
+        }
+        
+        # Integrate SOS into team stats if available
+        for team_abbr in default_stats.keys():
+            # Find full team name
+            full_name = None
+            for full, abbr in self.team_mapping.items():
+                if abbr == team_abbr:
+                    full_name = full
+                    break
+            
+            if full_name and full_name in sos_data:
+                sos_rating = sos_data[full_name].get('combined_sos', 0.5)
+                # Update SOS in team stats
+                default_stats[team_abbr][3] = sos_rating
+        
+        self.team_stats = default_stats
+        
+        return True
     
     def get_game_odds(self, home_team, away_team, home_full, away_full):
         """Aggregate all odds for a specific game"""
@@ -651,6 +766,13 @@ class NFLPredictor:
             (self.odds_data['home_team'] == home_full) & 
             (self.odds_data['away_team'] == away_full)
         ]
+        
+        if len(game_odds_rows) == 0:
+            # Try with abbreviations
+            game_odds_rows = self.odds_data[
+                (self.odds_data['home_team'] == home_team) & 
+                (self.odds_data['away_team'] == away_team)
+            ]
         
         if len(game_odds_rows) == 0:
             return None
@@ -675,13 +797,13 @@ class NFLPredictor:
             point = row.get('point', None)
             
             if market == 'h2h':
-                if label == home_full:
+                if label == home_full or label == home_team:
                     odds['home_moneyline'] = price
-                elif label == away_full:
+                elif label == away_full or label == away_team:
                     odds['away_moneyline'] = price
             
             elif market == 'spreads':
-                if label == home_full:
+                if label == home_full or label == home_team:
                     odds['spread'] = point
                     odds['spread_odds'] = price
             
@@ -710,109 +832,24 @@ class NFLPredictor:
         ]])
         
         try:
+            if self.model is None:
+                # Fallback prediction based on team stats
+                home_win_prob = 0.5 + (home_stats[0] - away_stats[0]) * 0.3
+                return max(0.1, min(0.9, home_win_prob))
+            
             probabilities = self.model.predict_proba(features)[0]
             home_win_prob = probabilities[1]
             return home_win_prob
         except Exception as e:
-            st.error(f"Prediction error: {e}")
-            return None
-
-    def predict_game_with_elo_enhanced(self, home_team, away_team):
-        """Enhanced prediction that actually uses ELO to improve accuracy"""
-        # Get ML model prediction
-        ml_win_prob = self.predict_game(home_team, away_team)
-        
-        if ml_win_prob is None:
-            return None
-            
-        # Get ELO prediction
-        elo_win_prob = self.elo_processor.calculate_elo_win_probability(home_team, away_team)
-        
-        # Get team ELO data for advanced adjustments
-        home_elo_data = self.elo_processor.get_team_elo(home_team)
-        away_elo_data = self.elo_processor.get_team_elo(away_team)
-        
-        # Calculate confidence factors based on ELO metrics
-        confidence_factors = self._calculate_elo_confidence_factors(home_elo_data, away_elo_data)
-        
-        # Dynamic weighting based on confidence
-        if confidence_factors['high_confidence']:
-            # When ELO metrics strongly favor one team, trust ELO more
-            elo_weight = 0.7
-            ml_weight = 0.3
-        elif confidence_factors['moderate_confidence']:
-            # Balanced approach
-            elo_weight = 0.5
-            ml_weight = 0.5
-        else:
-            # When uncertain, lean slightly toward ML model
-            elo_weight = 0.4
-            ml_weight = 0.6
-        
-        # Apply EPA-based adjustments
-        epa_adjustment = self._calculate_epa_based_adjustment(home_elo_data, away_elo_data)
-        
-        # Combine predictions with dynamic weighting and EPA adjustments
-        base_combined = (ml_weight * ml_win_prob) + (elo_weight * elo_win_prob)
-        final_win_prob = base_combined + epa_adjustment
-        
-        # Ensure probability stays within bounds
-        final_win_prob = max(0.05, min(0.95, final_win_prob))
-        
-        return {
-            'combined_win_prob': final_win_prob,
-            'ml_win_prob': ml_win_prob,
-            'elo_win_prob': elo_win_prob,
-            'elo_weight': elo_weight,
-            'ml_weight': ml_weight,
-            'epa_adjustment': epa_adjustment,
-            'home_elo': home_elo_data['nfelo'],
-            'away_elo': away_elo_data['nfelo'],
-            'confidence_level': confidence_factors['confidence_level']
-        }
+            # Fallback prediction
+            home_win_prob = 0.5 + (home_stats[0] - away_stats[0]) * 0.3
+            return max(0.1, min(0.9, home_win_prob))
     
-    def _calculate_elo_confidence_factors(self, home_data, away_data):
-        """Determine how much to trust ELO based on team metrics"""
-        elo_diff = abs(home_data['nfelo'] - away_data['nfelo'])
-        net_epa_diff = abs(home_data['net_epa'] - away_data['net_epa'])
-        
-        # High confidence if both ELO and EPA strongly favor one team
-        if elo_diff > 100 and net_epa_diff > 0.15:
-            return {'high_confidence': True, 'moderate_confidence': False, 'confidence_level': 'high'}
-        # Moderate confidence if either metric strongly favors one team
-        elif elo_diff > 75 or net_epa_diff > 0.1:
-            return {'high_confidence': False, 'moderate_confidence': True, 'confidence_level': 'moderate'}
-        else:
-            return {'high_confidence': False, 'moderate_confidence': False, 'confidence_level': 'low'}
-    
-    def _calculate_epa_based_adjustment(self, home_data, away_data):
-        """Use EPA metrics to adjust win probability"""
-        # Offensive matchup: home offense vs away defense
-        offensive_matchup = home_data['off_epa_play'] - away_data['def_epa_play']
-        
-        # Defensive matchup: away offense vs home defense  
-        defensive_matchup = away_data['off_epa_play'] - home_data['def_epa_play']
-        
-        # Net advantage
-        net_advantage = (offensive_matchup - defensive_matchup) * 0.1  # Scale factor
-        
-        # QB advantage
-        qb_advantage = (home_data['qb_adj'] - away_data['qb_adj']) * 0.005
-        
-        # Total adjustment (capped at ±0.1)
-        total_adjustment = net_advantage + qb_advantage
-        return max(-0.1, min(0.1, total_adjustment))
-    
-    def predict_game_score_enhanced(self, home_team, away_team, combined_win_prob, game_date):
-        """Enhanced score prediction using ELO metrics"""
+    def predict_game_score(self, home_team, away_team, home_win_prob, game_date):
+        """Predict the actual score of the game with weather adjustment"""
         if home_team not in self.team_stats or away_team not in self.team_stats:
             return None, None, None
-        
-        # Get ELO data for advanced scoring
-        home_elo_data = self.elo_processor.get_team_elo(home_team)
-        away_elo_data = self.elo_processor.get_team_elo(away_team)
-        
-        # Base scoring from team stats
+            
         home_offense = self.team_stats[home_team][1]
         away_offense = self.team_stats[away_team][1]
         home_defense = self.team_stats[home_team][2]
@@ -823,18 +860,8 @@ class NFLPredictor:
         away_sos = self.team_stats[away_team][3] if len(self.team_stats[away_team]) > 3 else 0.5
         
         # Base score prediction
-        home_score = (home_offense + away_defense) / 2 + (combined_win_prob - 0.5) * 7 + (home_sos - 0.5) * 2
-        away_score = (away_offense + home_defense) / 2 - (combined_win_prob - 0.5) * 7 + (away_sos - 0.5) * 2
-        
-        # ELO-based adjustments
-        elo_adjustment = self._calculate_elo_scoring_adjustment(home_elo_data, away_elo_data)
-        home_score += elo_adjustment['home_adjust']
-        away_score += elo_adjustment['away_adjust']
-        
-        # EPA-based adjustments
-        epa_adjustment = self._calculate_epa_scoring_adjustment(home_elo_data, away_elo_data)
-        home_score += epa_adjustment['home_adjust']
-        away_score += epa_adjustment['away_adjust']
+        home_score = (home_offense + away_defense) / 2 + (home_win_prob - 0.5) * 7 + (home_sos - 0.5) * 2
+        away_score = (away_offense + home_defense) / 2 - (home_win_prob - 0.5) * 7 + (away_sos - 0.5) * 2
         
         home_score = max(10, round(home_score))
         away_score = max(10, round(away_score))
@@ -860,40 +887,6 @@ class NFLPredictor:
                 )
     
         return home_score, away_score, weather_data
-    
-    def _calculate_elo_scoring_adjustment(self, home_data, away_data):
-        """Adjust scores based on ELO difference"""
-        elo_diff = home_data['nfelo'] - away_data['nfelo']
-        
-        # ELO difference affects scoring margin
-        if elo_diff > 100:
-            return {'home_adjust': 2.0, 'away_adjust': -2.0}
-        elif elo_diff > 50:
-            return {'home_adjust': 1.0, 'away_adjust': -1.0}
-        elif elo_diff < -100:
-            return {'home_adjust': -2.0, 'away_adjust': 2.0}
-        elif elo_diff < -50:
-            return {'home_adjust': -1.0, 'away_adjust': 1.0}
-        else:
-            return {'home_adjust': 0, 'away_adjust': 0}
-    
-    def _calculate_epa_scoring_adjustment(self, home_data, away_data):
-        """Adjust scores based on EPA efficiency"""
-        # Teams with better offensive EPA score more
-        home_off_boost = home_data['off_epa_play'] * 3
-        away_off_boost = away_data['off_epa_play'] * 3
-        
-        # Teams with worse defensive EPA allow more points
-        home_def_penalty = away_data['off_epa_play'] * 2  # Away offense vs home defense
-        away_def_penalty = home_data['off_epa_play'] * 2  # Home offense vs away defense
-        
-        home_adjust = home_off_boost - home_def_penalty
-        away_adjust = away_off_boost - away_def_penalty
-        
-        return {
-            'home_adjust': home_adjust,
-            'away_adjust': away_adjust
-        }
     
     def convert_prob_to_spread(self, home_win_prob):
         """Convert win probability to point spread"""
@@ -923,251 +916,269 @@ class NFLPredictor:
 
 def calculate_cover_probability(model_spread, vegas_spread):
     """Calculate probability of covering the spread"""
+    if vegas_spread is None:
+        return 50
+        
+    # Simple heuristic: the closer model spread is to Vegas spread, the higher the confidence
     spread_diff = abs(model_spread - vegas_spread)
     if spread_diff <= 1:
-        return 75
+        return 75  # High confidence
     elif spread_diff <= 3:
-        return 65
+        return 65  # Medium confidence
     elif spread_diff <= 6:
-        return 55
+        return 55  # Low confidence
     else:
-        return 50
+        return 50  # Toss-up
 
 def calculate_over_probability(model_total, vegas_total):
     """Calculate probability of over hitting"""
+    if vegas_total is None:
+        return 50
+        
+    # Simple heuristic based on difference between model and Vegas total
     total_diff = model_total - vegas_total
     if total_diff >= 3:
-        return 70
+        return 70  # Strong over
     elif total_diff >= 1:
-        return 60
+        return 60  # Lean over
     elif total_diff >= -1:
-        return 50
+        return 50  # Toss-up
     elif total_diff >= -3:
-        return 40
+        return 40  # Lean under
     else:
-        return 30
+        return 30  # Strong under
 
-def create_game_card(predictor, game, game_odds, elo_prediction, home_score, away_score, weather_data):
-    """Create a professional game card with clean design"""
+def get_confidence_class(probability):
+    """Get CSS class for confidence level"""
+    if probability >= 70:
+        return "confidence-high"
+    elif probability >= 60:
+        return "confidence-medium"
+    else:
+        return "confidence-low"
+
+def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data):
+    """Create a professional game card matching the desired layout"""
     
-    home_full = game['home']
-    away_full = game['away']
+    # Get game info with flexible column names
+    game_info = predictor.get_game_info(game)
+    if game_info is None:
+        return
+        
+    home_full, away_full, game_date = game_info
     home_team = predictor.get_team_abbreviation(home_full)
     away_team = predictor.get_team_abbreviation(away_full)
-    
-    matchup_analysis = predictor.elo_processor.get_matchup_analysis(home_team, away_team)
     
     with st.container():
         st.markdown('<div class="game-card">', unsafe_allow_html=True)
         
-        # Header with score and ELO info
-        home_elo_data = predictor.elo_processor.get_team_elo(home_team)
-        away_elo_data = predictor.elo_processor.get_team_elo(away_team)
+        # Score Header (like "Broncos 24 @ 21 Raiders")
+        st.markdown(f'<div class="score-header">{away_team} {int(away_score)} @ {int(home_score)} {home_team}</div>', unsafe_allow_html=True)
         
-        st.markdown(
-            f'<div class="score-header">'
-            f'🏈 {away_team} {int(away_score)} @ {home_team} {int(home_score)}<br>'
-            f'<small style="font-size: 0.9rem; opacity: 0.9;">ELO Ratings: {away_team} {away_elo_data["nfelo"]:.0f} | {home_team} {home_elo_data["nfelo"]:.0f}</small>'
-            f'</div>', 
-            unsafe_allow_html=True
-        )
-        
-        # Four Column Layout for Clean Organization
-        col1, col2, col3, col4 = st.columns([1, 1, 1, 1])
+        # Three Column Layout
+        col1, col2, col3 = st.columns([1, 1, 1])
         
         with col1:
-            # Enhanced Projections Section
-            st.markdown('<div class="projections-section">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">📈 Projections</div>', unsafe_allow_html=True)
+            # Model Projections Card
+            st.markdown('<div class="projections-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">📊 Model Projections</div>', unsafe_allow_html=True)
             
-            # Win Probability
-            final_win_prob = elo_prediction['combined_win_prob']
-            st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-            st.markdown('<div class="metric-label">Win Probability</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="metric-value">{final_win_prob*100:.1f}%</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # All projections in bubbles container
+            st.markdown('<div class="bubble-container">', unsafe_allow_html=True)
             
-            # Model Weights
-            st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-            st.markdown('<div class="metric-label">Model Confidence</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="metric-value">{elo_prediction["confidence_level"].title()}</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Winner Projection in Bubble
+            model_winner = home_full if home_win_prob > 0.5 else away_full
+            winner_abbr = home_team if home_win_prob > 0.5 else away_team
+            win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
+            confidence_class = get_confidence_class(win_prob_pct)
             
-            # Key Insights
-            st.markdown('<div style="margin-top: 1rem;"><strong>Key Insights:</strong></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div class="prediction-bubble {confidence_class}">
+                <span class="bubble-title">🏈 {winner_abbr} to Win</span>
+                <span class="bubble-subtitle">{win_prob_pct:.1f}% Probability</span>
+            </div>
+            ''', unsafe_allow_html=True)
             
-            if matchup_analysis['offensive_matchup'] > 0.1:
-                st.markdown('<div class="insight-item">✅ Offensive Advantage</div>', unsafe_allow_html=True)
-            elif matchup_analysis['offensive_matchup'] < -0.1:
-                st.markdown('<div class="insight-item">✅ Defensive Advantage</div>', unsafe_allow_html=True)
-                
-            if matchup_analysis['qb_advantage'] > 5:
-                st.markdown('<div class="insight-item">🎯 QB Advantage</div>', unsafe_allow_html=True)
-            elif matchup_analysis['qb_advantage'] < -5:
-                st.markdown('<div class="insight-item">🎯 QB Disadvantage</div>', unsafe_allow_html=True)
-                
-            if matchup_analysis['momentum_advantage'] > 0.5:
-                st.markdown('<div class="insight-item">📈 Positive Momentum</div>', unsafe_allow_html=True)
-            elif matchup_analysis['momentum_advantage'] < -0.5:
-                st.markdown('<div class="insight-item">📉 Negative Momentum</div>', unsafe_allow_html=True)
+            # Spread Projection in Bubble
+            model_spread = predictor.convert_prob_to_spread(home_win_prob)
+            st.markdown(f'''
+            <div class="prediction-bubble">
+                <span class="bubble-title">📈 Projected Spread</span>
+                <span class="bubble-subtitle">{model_spread:+.1f}</span>
+            </div>
+            ''', unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)  # Close projections-section
-        
+            # Totals Projection in Bubble
+            model_total = predictor.predict_total_points(home_team, away_team)
+            st.markdown(f'''
+            <div class="prediction-bubble">
+                <span class="bubble-title">🎯 Projected Total</span>
+                <span class="bubble-subtitle">{model_total:.1f} Points</span>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            # Score Projection in Bubble
+            st.markdown(f'''
+            <div class="prediction-bubble">
+                <span class="bubble-title">📊 Projected Score</span>
+                <span class="bubble-subtitle">{away_team}: {int(away_score)} | {home_team}: {int(home_score)}</span>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            st.markdown('</div>', unsafe_allow_html=True)  # Close bubble-container
+            st.markdown('</div>', unsafe_allow_html=True)  # Close projections-card
+            
         with col2:
-            # Efficiency Metrics Section
-            st.markdown('<div class="efficiency-section">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">⚡ Efficiency</div>', unsafe_allow_html=True)
+            # Vegas Odds Card
+            st.markdown('<div class="odds-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">🎰 Vegas Odds</div>', unsafe_allow_html=True)
             
-            # Offensive EPA
-            st.markdown('<div class="team-comparison">', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-name">{away_team}</div><div class="comparison-value">{away_elo_data["off_epa_play"]:+.3f}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-name">{home_team}</div><div class="comparison-value">{home_elo_data["off_epa_play"]:+.3f}</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            if game_odds:
+                # Moneyline
+                if game_odds.get('home_moneyline') is not None and game_odds.get('away_moneyline') is not None:
+                    st.markdown('**Moneyline:**')
+                    home_ml = game_odds["home_moneyline"]
+                    away_ml = game_odds["away_moneyline"]
+                    st.markdown(f'<span class="odds-value">{home_team}: {home_ml:+}</span>', unsafe_allow_html=True)
+                    st.markdown(f'<span class="odds-value">{away_team}: {away_ml:+}</span>', unsafe_allow_html=True)
+                    st.markdown('')  # Spacing
+                
+                # Spread
+                if game_odds.get('spread') is not None:
+                    spread_odds = game_odds.get('spread_odds', '')
+                    st.markdown('**Spread:**')
+                    st.markdown(f'<span class="odds-value">{game_odds["spread"]:+.1f} ({spread_odds})</span>', unsafe_allow_html=True)
+                    st.markdown('')  # Spacing
+                
+                # Total
+                if game_odds.get('total') is not None:
+                    over_odds = game_odds.get('over_odds', '')
+                    under_odds = game_odds.get('under_odds', '')
+                    st.markdown('**Total:**')
+                    st.markdown(f'<span class="odds-value">{game_odds["total"]} (O: {over_odds} | U: {under_odds})</span>', unsafe_allow_html=True)
+            else:
+                st.markdown('*Odds not available*')
             
-            # Defensive EPA
-            st.markdown('<div class="team-comparison">', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-name">{away_team}</div><div class="comparison-value">{away_elo_data["def_epa_play"]:+.3f}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-name">{home_team}</div><div class="comparison-value">{home_elo_data["def_epa_play"]:+.3f}</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)  # Close odds-card
             
-            # Net EPA
-            st.markdown('<div class="team-comparison">', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-name">{away_team}</div><div class="comparison-value">{away_elo_data["net_epa"]:+.2f}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-name">{home_team}</div><div class="comparison-value">{home_elo_data["net_epa"]:+.2f}</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Recent Trends
-            st.markdown('<div style="margin-top: 1rem;"><strong>Recent Trends:</strong></div>', unsafe_allow_html=True)
-            away_trend = "📈" if away_elo_data["wow_change"] > 0 else "📉" if away_elo_data["wow_change"] < 0 else "➡️"
-            home_trend = "📈" if home_elo_data["wow_change"] > 0 else "📉" if home_elo_data["wow_change"] < 0 else "➡️"
-            st.markdown(f'<div class="team-comparison"><div class="team-name">{away_team}</div><div class="comparison-value">{away_trend} {away_elo_data["wow_change"]:+.1f}</div></div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="team-comparison"><div class="team-name">{home_team}</div><div class="comparison-value">{home_trend} {home_elo_data["wow_change"]:+.1f}</div></div>', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)  # Close efficiency-section
+            # Weather Card
+            if weather_data and weather_data.get('success'):
+                st.markdown('<div class="weather-card">', unsafe_allow_html=True)
+                st.markdown('<div class="section-title">🌤️ Weather</div>', unsafe_allow_html=True)
+                
+                stadium_name = predictor.weather_predictor.weather_api.team_stadiums.get(home_full, "Unknown Stadium")
+                stadium_info = predictor.weather_predictor.weather_api.stadiums.get(stadium_name, {})
+                roof_type = stadium_info.get('roof_type', 'Unknown')
+                
+                st.write(f"**Venue:** {stadium_name}")
+                st.write(f"**Conditions:** {weather_data.get('conditions', 'Unknown')}")
+                st.write(f"**Temperature:** {weather_data.get('temperature', 'N/A')}°F")
+                st.write(f"**Wind:** {weather_data.get('wind_speed', 'N/A')} mph")
+                st.write(f"**Stadium Type:** {roof_type.title()}")
+                
+                st.markdown('</div>', unsafe_allow_html=True)  # Close weather-card
         
         with col3:
-            # Final Projections Section
-            st.markdown('<div class="final-section">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">🏆 Picks</div>', unsafe_allow_html=True)
+            # Final Projections Card
+            st.markdown('<div class="final-projections-card">', unsafe_allow_html=True)
+            st.markdown('<div class="section-title">🎯 Betting Recommendations</div>', unsafe_allow_html=True)
             
-            # Winner Pick
-            model_winner = home_team if final_win_prob > 0.5 else away_team
-            win_prob_pct = final_win_prob * 100 if final_win_prob > 0.5 else (1 - final_win_prob) * 100
+            # All betting recommendations in bubbles
+            st.markdown('<div class="bubble-container">', unsafe_allow_html=True)
             
-            st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-            st.markdown('<div class="metric-label">Winner</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="metric-value">{model_winner}</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="probability-badge" style="margin-top: 0.5rem;">{win_prob_pct:.0f}%</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Winner Pick with Probability
+            win_confidence_class = get_confidence_class(win_prob_pct)
+            st.markdown(f'''
+            <div class="prediction-bubble {win_confidence_class}">
+                <span class="bubble-title">✅ Pick: {winner_abbr}</span>
+                <span class="bubble-subtitle">{win_prob_pct:.0f}% Confidence</span>
+            </div>
+            ''', unsafe_allow_html=True)
             
             # Spread Pick
-            if game_odds and game_odds.get('spread'):
+            if game_odds and game_odds.get('spread') is not None:
                 vegas_spread = game_odds['spread']
-                model_spread = predictor.convert_prob_to_spread(final_win_prob)
+                model_spread = predictor.convert_prob_to_spread(home_win_prob)
                 
                 # Determine ATS pick
                 if vegas_spread < 0:  # Home team favored
-                    if model_spread <= vegas_spread:
+                    if model_spread <= vegas_spread:  # Model thinks home covers
                         ats_pick = f"{home_team} to cover"
-                    else:
+                        ats_abbr = home_team
+                    else:  # Model thinks away covers
                         ats_pick = f"{away_team} to cover"
+                        ats_abbr = away_team
                 else:  # Away team favored
-                    if model_spread >= vegas_spread:
+                    if model_spread >= vegas_spread:  # Model thinks away covers
                         ats_pick = f"{away_team} to cover"
-                    else:
+                        ats_abbr = away_team
+                    else:  # Model thinks home covers
                         ats_pick = f"{home_team} to cover"
+                        ats_abbr = home_team
                 
                 cover_prob = calculate_cover_probability(model_spread, vegas_spread)
+                spread_confidence_class = get_confidence_class(cover_prob)
                 
-                st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-                st.markdown('<div class="metric-label">Spread</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="metric-value">{ats_pick}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="confidence-badge" style="margin-top: 0.5rem;">{cover_prob}%</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div class="prediction-bubble {spread_confidence_class}">
+                    <span class="bubble-title">📈 Spread: {ats_abbr}</span>
+                    <span class="bubble-subtitle">{cover_prob}% Confidence</span>
+                </div>
+                ''', unsafe_allow_html=True)
             
             # Totals Pick
-            if game_odds and game_odds.get('total'):
+            if game_odds and game_odds.get('total') is not None:
                 vegas_total = game_odds['total']
                 model_total = predictor.predict_total_points(home_team, away_team)
                 
                 if model_total > vegas_total:
                     totals_pick = "Over"
+                    totals_symbol = "📈"
                 else:
                     totals_pick = "Under"
+                    totals_symbol = "📉"
                 
                 over_prob = calculate_over_probability(model_total, vegas_total)
                 if totals_pick == "Under":
                     over_prob = 100 - over_prob
                 
-                st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-                st.markdown('<div class="metric-label">Total</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="metric-value">{totals_pick}</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="confidence-badge" style="margin-top: 0.5rem;">{over_prob}%</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)  # Close final-section
-        
-        with col4:
-            # Odds Section
-            st.markdown('<div class="odds-section">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">💰 Vegas Odds</div>', unsafe_allow_html=True)
-            
-            if game_odds:
-                # Moneyline
-                if game_odds.get('home_moneyline') and game_odds.get('away_moneyline'):
-                    st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-                    st.markdown('<div class="metric-label">Moneyline</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="team-comparison"><div class="team-name">{home_team}</div><div class="odds-value">{game_odds["home_moneyline"]:+d}</div></div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="team-comparison"><div class="team-name">{away_team}</div><div class="odds-value">{game_odds["away_moneyline"]:+d}</div></div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
+                totals_confidence_class = get_confidence_class(over_prob)
                 
-                # Spread
-                if game_odds.get('spread'):
-                    st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-                    st.markdown('<div class="metric-label">Spread</div>', unsafe_allow_html=True)
-                    spread_display = f"{game_odds['spread']:+.1f}"
-                    st.markdown(f'<div class="metric-value">{spread_display}</div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Total
-                if game_odds.get('total'):
-                    st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-                    st.markdown('<div class="metric-label">Total Points</div>', unsafe_allow_html=True)
-                    st.markdown(f'<div class="metric-value">{game_odds["total"]:.1f}</div>', unsafe_allow_html=True)
-                    st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="metric-item">', unsafe_allow_html=True)
-                st.markdown('<div class="metric-label">Odds</div>', unsafe_allow_html=True)
-                st.markdown('<div class="metric-value" style="color: #6B7280;">Not Available</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div class="prediction-bubble {totals_confidence_class}">
+                    <span class="bubble-title">{totals_symbol} Total: {totals_pick}</span>
+                    <span class="bubble-subtitle">{over_prob}% Confidence</span>
+                </div>
+                ''', unsafe_allow_html=True)
             
-            st.markdown('</div>', unsafe_allow_html=True)  # Close odds-section
+            st.markdown('</div>', unsafe_allow_html=True)  # Close bubble-container
+            st.markdown('</div>', unsafe_allow_html=True)  # Close final-projections-card
         
         st.markdown('</div>', unsafe_allow_html=True)  # Close game-card
 
 def main():
-    # Header
+    # Header with professional tagline
     st.markdown('<div class="main-header">NFL Prediction Model</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">Week 10 • Enhanced with ELO & Efficiency Metrics</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sub-header">🏈 Where Data Meets Destiny • Model Intelligence vs Vegas Wisdom</div>', unsafe_allow_html=True)
     
-    # Check for required files
-    missing_files = check_required_files()
-    if missing_files:
-        st.error(f"❌ Missing required data files: {', '.join(missing_files)}")
-        st.info("Please ensure all data files are available in the correct directory.")
-        return
-    
-    # Initialize predictor
-    predictor = NFLPredictor()
-    
-    # Load model and data
-    if not predictor.load_model():
-        st.error("Failed to load model")
-        st.stop()
+    # Initialize predictor with loading state
+    with st.spinner('Loading NFL predictions...'):
+        predictor = NFLPredictor()
         
-    if not predictor.load_data():
-        st.error("Failed to load data files")
-        st.stop()
+        # Load model and data
+        if not predictor.load_model():
+            st.error("Failed to load model")
+            st.stop()
+            
+        if not predictor.load_data():
+            st.error("Failed to load data files")
+            st.stop()
+    
+    # Add refresh button
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        if st.button("🔄 Refresh Predictions", use_container_width=True):
+            st.rerun()
     
     # Display predictions for each game
     if predictor.schedule is None or len(predictor.schedule) == 0:
@@ -1175,30 +1186,31 @@ def main():
         return
     
     for _, game in predictor.schedule.iterrows():
-        home_full = game['home']
-        away_full = game['away']
-        game_date = game['date']
-        
+        # Get game info with flexible column names
+        game_info = predictor.get_game_info(game)
+        if game_info is None:
+            continue
+            
+        home_full, away_full, game_date = game_info
         home_team = predictor.get_team_abbreviation(home_full)
         away_team = predictor.get_team_abbreviation(away_full)
         
         # Get aggregated odds for this game
         game_odds = predictor.get_game_odds(home_team, away_team, home_full, away_full)
         
-        # Use ENHANCED ELO prediction
-        elo_prediction = predictor.predict_game_with_elo_enhanced(home_team, away_team)
+        # Make model projections
+        home_win_prob = predictor.predict_game(home_team, away_team)
         
-        if elo_prediction is None:
-            st.warning(f"Could not generate prediction for {home_team} vs {away_team}")
+        if home_win_prob is None:
             continue
         
-        # Get ENHANCED scores with ELO adjustments
-        home_score, away_score, weather_data = predictor.predict_game_score_enhanced(
-            home_team, away_team, elo_prediction['combined_win_prob'], game_date
-        )
+        # Get scores with weather adjustment
+        home_score, away_score, weather_data = predictor.predict_game_score(home_team, away_team, home_win_prob, game_date)
         
         # Create professional game card
-        create_game_card(predictor, game, game_odds, elo_prediction, home_score, away_score, weather_data)
+        create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data)
+        
+        st.markdown("<br>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
