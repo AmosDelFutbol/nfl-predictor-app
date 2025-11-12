@@ -57,68 +57,29 @@ st.markdown("""
         background: #F8FAFC;
         border-radius: 10px;
         padding: 1.5rem;
-        margin: 1rem 0;
+        margin: 16px 0px;
         border-left: 4px solid #3B82F6;
     }
     .final-projections-card {
         background: #ECFDF5;
         border-radius: 10px;
         padding: 1.5rem;
-        margin: 1rem 0;
+        margin: 16px 0px;
         border-left: 4px solid #10B981;
     }
     .weather-card {
         background: #EFF6FF;
         border-radius: 10px;
         padding: 1.5rem;
-        margin: 1rem 0;
+        margin: 16px 0px;
         border-left: 4px solid #60A5FA;
     }
     .odds-card {
         background: #FEF3C7;
         border-radius: 10px;
         padding: 1.5rem;
-        margin: 1rem 0;
+        margin: 16px 0px;
         border-left: 4px solid #D97706;
-    }
-    .projection-item {
-        margin: 1rem 0;
-        padding: 0.75rem;
-        background: white;
-        border-radius: 8px;
-        border: 1px solid #E5E7EB;
-    }
-    .probability-badge {
-        background: #1E40AF;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-block;
-        margin: 0.25rem 0;
-    }
-    .confidence-badge {
-        background: #059669;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        display: inline-block;
-        margin: 0.25rem 0;
-    }
-    .odds-value {
-        font-size: 1.1rem;
-        font-weight: 600;
-        color: #059669;
-        margin-left: 0.5rem;
-    }
-    .vegas-odds {
-        font-size: 1rem;
-        font-weight: 600;
-        color: #DC2626;
-        margin-left: 0.5rem;
     }
     .section-title {
         font-size: 1.3rem;
@@ -128,32 +89,18 @@ st.markdown("""
         padding-bottom: 0.5rem;
         border-bottom: 2px solid #E5E7EB;
     }
-    .comparison-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin: 0.5rem 0;
-        padding: 0.5rem;
-    }
-    .model-value {
-        font-weight: 600;
-        color: #1E40AF;
-    }
-    .vegas-value {
-        font-weight: 600;
-        color: #DC2626;
-    }
     .prediction-bubble {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
-        padding: 1rem 1.5rem;
-        border-radius: 25px;
+        padding: 1rem;
+        border-radius: 12px;
         font-weight: 600;
         text-align: center;
-        margin: 0.5rem 0;
-        display: block;
+        margin: 0.75rem 0;
         width: 100%;
         box-sizing: border-box;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
     }
     .confidence-high {
         background: linear-gradient(135deg, #10B981 0%, #059669 100%);
@@ -164,15 +111,21 @@ st.markdown("""
     .confidence-low {
         background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
     }
-    .bubble-container {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        margin: 1rem 0;
+    .bubble-title {
+        font-size: 1rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+    .bubble-subtitle {
+        font-size: 0.85rem;
+        font-weight: 500;
+        opacity: 0.9;
+        display: block;
+        margin: 0.25rem 0;
     }
 </style>
 """, unsafe_allow_html=True)
-
 class WeatherAPI:
     def __init__(self):
         self.stadiums = None
@@ -1015,23 +968,44 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             st.markdown('<div class="projections-card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">📊 Model Projections</div>', unsafe_allow_html=True)
             
-            # Winner Projection in Bubble
+            # Winner Projection in Bubble - ALL CONTENT INSIDE THE BUBBLE
             model_winner = home_full if home_win_prob > 0.5 else away_full
             winner_abbr = home_team if home_win_prob > 0.5 else away_team
             win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
             confidence_class = get_confidence_class(win_prob_pct)
             
-            st.markdown('<div class="bubble-container">', unsafe_allow_html=True)
-            st.markdown(f'<div class="prediction-bubble {confidence_class}">🏈 {winner_abbr} to Win<br><small>Probability: {win_prob_pct:.1f}%</small></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div class="prediction-bubble {confidence_class}">
+                <div class="bubble-title">🏈 {winner_abbr} to Win</div>
+                <div class="bubble-subtitle">{win_prob_pct:.1f}% Probability</div>
+            </div>
+            ''', unsafe_allow_html=True)
             
             # Spread Projection in Bubble
             model_spread = predictor.convert_prob_to_spread(home_win_prob)
-            st.markdown(f'<div class="prediction-bubble">📈 Projected Spread<br><small>{model_spread:+.1f}</small></div>', unsafe_allow_html=True)
+            st.markdown(f'''
+            <div class="prediction-bubble">
+                <div class="bubble-title">📈 Projected Spread</div>
+                <div class="bubble-subtitle">{model_spread:+.1f}</div>
+            </div>
+            ''', unsafe_allow_html=True)
             
             # Totals Projection in Bubble
             model_total = predictor.predict_total_points(home_team, away_team)
-            st.markdown(f'<div class="prediction-bubble">🎯 Projected Total<br><small>{model_total:.1f} Points</small></div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)  # Close bubble-container
+            st.markdown(f'''
+            <div class="prediction-bubble">
+                <div class="bubble-title">🎯 Projected Total</div>
+                <div class="bubble-subtitle">{model_total:.1f} Points</div>
+            </div>
+            ''', unsafe_allow_html=True)
+            
+            # Score Projection in Bubble
+            st.markdown(f'''
+            <div class="prediction-bubble">
+                <div class="bubble-title">📊 Projected Score</div>
+                <div class="bubble-subtitle">{away_team}: {int(away_score)} | {home_team}: {int(home_score)}</div>
+            </div>
+            ''', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)  # Close projections-card
             
@@ -1041,27 +1015,46 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             st.markdown('<div class="section-title">🎰 Vegas Odds</div>', unsafe_allow_html=True)
             
             if game_odds:
-                # Moneyline
+                # Moneyline in Bubbles
                 if game_odds.get('home_moneyline') is not None and game_odds.get('away_moneyline') is not None:
-                    st.markdown(f'**Moneyline:**')
                     home_ml = game_odds["home_moneyline"]
                     away_ml = game_odds["away_moneyline"]
-                    st.markdown(f'`{home_team}: {home_ml:+} | {away_team}: {away_ml:+}`')
+                    
+                    st.markdown(f'''
+                    <div class="prediction-bubble">
+                        <div class="bubble-title">💰 Moneyline</div>
+                        <div class="bubble-subtitle">{home_team}: {home_ml:+}</div>
+                        <div class="bubble-subtitle">{away_team}: {away_ml:+}</div>
+                    </div>
+                    ''', unsafe_allow_html=True)
                 
-                # Spread
+                # Spread in Bubble
                 if game_odds.get('spread') is not None:
                     spread_odds = game_odds.get('spread_odds', '')
-                    st.markdown(f'**Spread:**')
-                    st.markdown(f'`{game_odds["spread"]:+.1f} ({spread_odds})`')
+                    st.markdown(f'''
+                    <div class="prediction-bubble">
+                        <div class="bubble-title">📊 Spread</div>
+                        <div class="bubble-subtitle">{game_odds["spread"]:+.1f} ({spread_odds})</div>
+                    </div>
+                    ''', unsafe_allow_html=True)
                 
-                # Total
+                # Total in Bubble
                 if game_odds.get('total') is not None:
                     over_odds = game_odds.get('over_odds', '')
                     under_odds = game_odds.get('under_odds', '')
-                    st.markdown(f'**Total:**')
-                    st.markdown(f'`{game_odds["total"]} (O: {over_odds} | U: {under_odds})`')
+                    st.markdown(f'''
+                    <div class="prediction-bubble">
+                        <div class="bubble-title">🎯 Total</div>
+                        <div class="bubble-subtitle">{game_odds["total"]} (O: {over_odds} | U: {under_odds})</div>
+                    </div>
+                    ''', unsafe_allow_html=True)
             else:
-                st.markdown('*Odds not available*')
+                st.markdown('''
+                <div class="prediction-bubble">
+                    <div class="bubble-title">🎰 Odds</div>
+                    <div class="bubble-subtitle">Not available</div>
+                </div>
+                ''', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)  # Close odds-card
             
@@ -1074,11 +1067,14 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
                 stadium_info = predictor.weather_predictor.weather_api.stadiums.get(stadium_name, {})
                 roof_type = stadium_info.get('roof_type', 'Unknown')
                 
-                st.write(f"**Venue:** {stadium_name}")
-                st.write(f"**Conditions:** {weather_data.get('conditions', 'Unknown')}")
-                st.write(f"**Temperature:** {weather_data.get('temperature', 'N/A')}°F")
-                st.write(f"**Wind:** {weather_data.get('wind_speed', 'N/A')} mph")
-                st.write(f"**Stadium Type:** {roof_type.title()}")
+                st.markdown(f'''
+                <div class="prediction-bubble">
+                    <div class="bubble-title">🏟️ {stadium_name}</div>
+                    <div class="bubble-subtitle">{weather_data.get('conditions', 'Unknown')}</div>
+                    <div class="bubble-subtitle">{weather_data.get('temperature', 'N/A')}°F | Wind: {weather_data.get('wind_speed', 'N/A')} mph</div>
+                    <div class="bubble-subtitle">Roof: {roof_type.title()}</div>
+                </div>
+                ''', unsafe_allow_html=True)
                 
                 st.markdown('</div>', unsafe_allow_html=True)  # Close weather-card
         
@@ -1087,13 +1083,16 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
             st.markdown('<div class="final-projections-card">', unsafe_allow_html=True)
             st.markdown('<div class="section-title">🎯 Betting Recommendations</div>', unsafe_allow_html=True)
             
-            # Winner Pick with Probability
-            st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-            st.markdown(f'**Winner:** {model_winner}')
-            st.markdown(f'<div class="probability-badge">WIN Probability: {win_prob_pct:.0f}%</div>', unsafe_allow_html=True)
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Winner Pick with Probability - ALL CONTENT INSIDE BUBBLE
+            win_confidence_class = get_confidence_class(win_prob_pct)
+            st.markdown(f'''
+            <div class="prediction-bubble {win_confidence_class}">
+                <div class="bubble-title">✅ Pick: {winner_abbr}</div>
+                <div class="bubble-subtitle">{win_prob_pct:.0f}% Confidence</div>
+            </div>
+            ''', unsafe_allow_html=True)
             
-            # Spread Pick
+            # Spread Pick - ALL CONTENT INSIDE BUBBLE
             if game_odds and game_odds.get('spread') is not None:
                 vegas_spread = game_odds['spread']
                 model_spread = predictor.convert_prob_to_spread(home_win_prob)
@@ -1102,47 +1101,56 @@ def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away
                 if vegas_spread < 0:  # Home team favored
                     if model_spread <= vegas_spread:  # Model thinks home covers
                         ats_pick = f"{home_team} to cover"
+                        ats_abbr = home_team
                     else:  # Model thinks away covers
                         ats_pick = f"{away_team} to cover"
+                        ats_abbr = away_team
                 else:  # Away team favored
                     if model_spread >= vegas_spread:  # Model thinks away covers
                         ats_pick = f"{away_team} to cover"
+                        ats_abbr = away_team
                     else:  # Model thinks home covers
                         ats_pick = f"{home_team} to cover"
+                        ats_abbr = home_team
                 
                 cover_prob = calculate_cover_probability(model_spread, vegas_spread)
-                confidence_class = get_confidence_class(cover_prob)
+                spread_confidence_class = get_confidence_class(cover_prob)
                 
-                st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-                st.markdown(f'**Spread:** {ats_pick}')
-                st.markdown(f'<div class="confidence-badge {confidence_class}">{cover_prob}% Confidence</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div class="prediction-bubble {spread_confidence_class}">
+                    <div class="bubble-title">📈 Spread: {ats_abbr}</div>
+                    <div class="bubble-subtitle">{cover_prob}% Confidence</div>
+                </div>
+                ''', unsafe_allow_html=True)
             
-            # Totals Pick
+            # Totals Pick - ALL CONTENT INSIDE BUBBLE
             if game_odds and game_odds.get('total') is not None:
                 vegas_total = game_odds['total']
                 model_total = predictor.predict_total_points(home_team, away_team)
                 
                 if model_total > vegas_total:
                     totals_pick = "Over"
+                    totals_symbol = "📈"
                 else:
                     totals_pick = "Under"
+                    totals_symbol = "📉"
                 
                 over_prob = calculate_over_probability(model_total, vegas_total)
                 if totals_pick == "Under":
                     over_prob = 100 - over_prob
                 
-                confidence_class = get_confidence_class(over_prob)
+                totals_confidence_class = get_confidence_class(over_prob)
                 
-                st.markdown('<div class="projection-item">', unsafe_allow_html=True)
-                st.markdown(f'**Total:** {totals_pick} {vegas_total}')
-                st.markdown(f'<div class="confidence-badge {confidence_class}">{over_prob}% Confidence</div>', unsafe_allow_html=True)
-                st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown(f'''
+                <div class="prediction-bubble {totals_confidence_class}">
+                    <div class="bubble-title">{totals_symbol} Total: {totals_pick}</div>
+                    <div class="bubble-subtitle">{over_prob}% Confidence</div>
+                </div>
+                ''', unsafe_allow_html=True)
             
             st.markdown('</div>', unsafe_allow_html=True)  # Close final-projections-card
         
         st.markdown('</div>', unsafe_allow_html=True)  # Close game-card
-
 def main():
     # Header with professional tagline
     st.markdown('<div class="main-header">NFL Prediction Model</div>', unsafe_allow_html=True)
