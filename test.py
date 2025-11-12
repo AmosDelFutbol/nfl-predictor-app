@@ -41,7 +41,6 @@ st.markdown("""
         margin: 1.5rem 0;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
         border: 1px solid #E5E7EB;
-        overflow: hidden; /* This prevents content from overflowing */
     }
     .score-header {
         font-size: 1.8rem;
@@ -54,13 +53,16 @@ st.markdown("""
         color: white;
         border-radius: 10px;
     }
+    /* FIXED: Card containers with proper bubble containment */
     .projections-card {
         background: #F8FAFC;
         border-radius: 10px;
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #3B82F6;
-        overflow: hidden; /* Contain bubbles */
+        position: relative;
+        overflow: visible !important;
+        min-height: 300px;
     }
     .final-projections-card {
         background: #ECFDF5;
@@ -68,7 +70,9 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #10B981;
-        overflow: hidden; /* Contain bubbles */
+        position: relative;
+        overflow: visible !important;
+        min-height: 300px;
     }
     .weather-card {
         background: #EFF6FF;
@@ -76,7 +80,8 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #60A5FA;
-        overflow: hidden; /* Contain bubbles */
+        position: relative;
+        overflow: visible !important;
     }
     .odds-card {
         background: #FEF3C7;
@@ -84,7 +89,9 @@ st.markdown("""
         padding: 1.5rem;
         margin: 1rem 0;
         border-left: 4px solid #D97706;
-        overflow: hidden; /* Contain bubbles */
+        position: relative;
+        overflow: visible !important;
+        min-height: 200px;
     }
     .section-title {
         font-size: 1.3rem;
@@ -94,6 +101,7 @@ st.markdown("""
         padding-bottom: 0.5rem;
         border-bottom: 2px solid #E5E7EB;
     }
+    /* FIXED: Bubble styling - removed any positioning that causes floating */
     .prediction-bubble {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -102,12 +110,13 @@ st.markdown("""
         font-weight: 600;
         text-align: center;
         margin: 0.5rem 0;
-        display: block;
         width: 100%;
         box-sizing: border-box;
         box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         border: 1px solid rgba(255, 255, 255, 0.2);
-        transition: transform 0.2s ease;
+        position: relative !important;
+        float: none !important;
+        display: block !important;
     }
     .prediction-bubble:hover {
         transform: translateY(-2px);
@@ -122,12 +131,15 @@ st.markdown("""
     .confidence-low {
         background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
     }
+    /* FIXED: Bubble container - ensures proper flow */
     .bubble-container {
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        margin: 0;
         width: 100%;
+        position: relative !important;
+        float: none !important;
+        clear: both !important;
     }
     .bubble-title {
         font-size: 1rem;
@@ -151,34 +163,19 @@ st.markdown("""
         display: inline-block;
         margin: 0.25rem 0;
     }
-    /* Ensure columns have proper spacing and containment */
-    .stColumn {
-        padding: 0 0.5rem;
-    }
-    /* Fix for Streamlit column layout */
+    /* Force Streamlit columns to behave */
     [data-testid="column"] {
         padding: 0 0.5rem;
     }
-</style>
-<style>
-/* Responsive fixes for mobile */
-@media (max-width: 768px) {
-    .game-card {
-        padding: 1rem;
+    .stColumn {
+        padding: 0 0.5rem;
     }
-    .prediction-bubble {
-        padding: 0.75rem;
+    /* Ensure all content stays within cards */
+    div[data-testid="stVerticalBlock"] > div[style*="flex-direction: column"] {
+        overflow: visible !important;
     }
-    .bubble-title {
-        font-size: 0.9rem;
-    }
-    .bubble-subtitle {
-        font-size: 0.8rem;
-    }
-}
 </style>
 """, unsafe_allow_html=True)
-
 class WeatherAPI:
     def __init__(self):
         self.stadiums = None
