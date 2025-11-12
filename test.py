@@ -1,1211 +1,689 @@
-# app.py
-import streamlit as st
 import pandas as pd
 import numpy as np
 import json
 import pickle
-import requests
-import os
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.model_selection import train_test_split
-from datetime import datetime
+import streamlit as st
 
-# Set page config
-st.set_page_config(
-    page_title="NFL Prediction Model",
-    page_icon="🏈",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
-# Custom CSS for professional styling
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        text-align: center;
-        margin-bottom: 0.5rem;
-    }
-    .sub-header {
-        font-size: 1.1rem;
-        color: #6B7280;
-        text-align: center;
-        margin-bottom: 2rem;
-    }
-    .game-card {
-        background: white;
-        border-radius: 12px;
-        padding: 2rem;
-        margin: 1.5rem 0;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-        border: 1px solid #E5E7EB;
-    }
-    .score-header {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #1E3A8A;
-        text-align: center;
-        margin-bottom: 2rem;
-        padding: 1rem;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        border-radius: 10px;
-    }
-    .projections-card {
-        background: #F8FAFC;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 16px 0px;
-        border-left: 4px solid #3B82F6;
-    }
-    .final-projections-card {
-        background: #ECFDF5;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 16px 0px;
-        border-left: 4px solid #10B981;
-    }
-    .weather-card {
-        background: #EFF6FF;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 16px 0px;
-        border-left: 4px solid #60A5FA;
-    }
-    .odds-card {
-        background: #FEF3C7;
-        border-radius: 10px;
-        padding: 1.5rem;
-        margin: 16px 0px;
-        border-left: 4px solid #D97706;
-    }
-    .section-title {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #1F2937;
-        margin-bottom: 1rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid #E5E7EB;
-    }
-    .prediction-bubble {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 1rem;
-        border-radius: 12px;
-        font-weight: 600;
-        text-align: center;
-        margin: 0.75rem 0;
-        width: 100%;
-        box-sizing: border-box;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-        border: 1px solid rgba(255, 255, 255, 0.2);
-    }
-    .confidence-high {
-        background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-    }
-    .confidence-medium {
-        background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-    }
-    .confidence-low {
-        background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%);
-    }
-    .bubble-title {
-        font-size: 1rem;
-        font-weight: 700;
-        margin-bottom: 0.5rem;
-        display: block;
-    }
-    .bubble-subtitle {
-        font-size: 0.85rem;
-        font-weight: 500;
-        opacity: 0.9;
-        display: block;
-        margin: 0.25rem 0;
-    }
-</style>
-""", unsafe_allow_html=True)
-class WeatherAPI:
+class EnhancedNFLProjector:
     def __init__(self):
-        self.stadiums = None
-        self.team_stadiums = None
-        self.load_stadiums()
-    
-    def load_stadiums(self):
-        """Load stadium data"""
-        try:
-            with open('nfl_stadiums.json', 'r') as f:
-                data = json.load(f)
-            self.stadiums = data['stadiums']
-            self.team_stadiums = data['team_stadiums']
-            return True
-        except Exception as e:
-            # Create minimal stadium data
-            self.stadiums = {
-                'Allegiant Stadium': {'city': 'Las Vegas', 'roof_type': 'domed'},
-                'Arrowhead Stadium': {'city': 'Kansas City', 'roof_type': 'open'},
-                'AT&T Stadium': {'city': 'Dallas', 'roof_type': 'retractable'},
-                'Bank of America Stadium': {'city': 'Charlotte', 'roof_type': 'open'},
-                'Caesars Superdome': {'city': 'New Orleans', 'roof_type': 'domed'},
-                'Cleveland Browns Stadium': {'city': 'Cleveland', 'roof_type': 'open'},
-                'Empower Field at Mile High': {'city': 'Denver', 'roof_type': 'open'},
-                'Ford Field': {'city': 'Detroit', 'roof_type': 'domed'},
-                'Gillette Stadium': {'city': 'Foxborough', 'roof_type': 'open'},
-                'Hard Rock Stadium': {'city': 'Miami', 'roof_type': 'open'},
-                'Highmark Stadium': {'city': 'Buffalo', 'roof_type': 'open'},
-                'Lambeau Field': {'city': 'Green Bay', 'roof_type': 'open'},
-                "Levi's Stadium": {'city': 'Santa Clara', 'roof_type': 'open'},
-                'Lucas Oil Stadium': {'city': 'Indianapolis', 'roof_type': 'retractable'},
-                'Lumen Field': {'city': 'Seattle', 'roof_type': 'open'},
-                'M&T Bank Stadium': {'city': 'Baltimore', 'roof_type': 'open'},
-                'MetLife Stadium': {'city': 'East Rutherford', 'roof_type': 'open'},
-                'Lincoln Financial Field': {'city': 'Philadelphia', 'roof_type': 'open'},
-                'Nissan Stadium': {'city': 'Nashville', 'roof_type': 'open'},
-                'NRG Stadium': {'city': 'Houston', 'roof_type': 'retractable'},
-                'Paycor Stadium': {'city': 'Cincinnati', 'roof_type': 'open'},
-                'Raymond James Stadium': {'city': 'Tampa', 'roof_type': 'open'},
-                'SoFi Stadium': {'city': 'Los Angeles', 'roof_type': 'domed'},
-                'Soldier Field': {'city': 'Chicago', 'roof_type': 'open'},
-                'State Farm Stadium': {'city': 'Glendale', 'roof_type': 'retractable'},
-                'TIAA Bank Field': {'city': 'Jacksonville', 'roof_type': 'open'},
-                'U.S. Bank Stadium': {'city': 'Minneapolis', 'roof_type': 'domed'}
-            }
-            
-            self.team_stadiums = {
-                'Arizona Cardinals': 'State Farm Stadium',
-                'Atlanta Falcons': 'Mercedes-Benz Stadium',
-                'Baltimore Ravens': 'M&T Bank Stadium',
-                'Buffalo Bills': 'Highmark Stadium',
-                'Carolina Panthers': 'Bank of America Stadium',
-                'Chicago Bears': 'Soldier Field',
-                'Cincinnati Bengals': 'Paycor Stadium',
-                'Cleveland Browns': 'Cleveland Browns Stadium',
-                'Dallas Cowboys': 'AT&T Stadium',
-                'Denver Broncos': 'Empower Field at Mile High',
-                'Detroit Lions': 'Ford Field',
-                'Green Bay Packers': 'Lambeau Field',
-                'Houston Texans': 'NRG Stadium',
-                'Indianapolis Colts': 'Lucas Oil Stadium',
-                'Jacksonville Jaguars': 'TIAA Bank Field',
-                'Kansas City Chiefs': 'Arrowhead Stadium',
-                'Las Vegas Raiders': 'Allegiant Stadium',
-                'Los Angeles Chargers': 'SoFi Stadium',
-                'Los Angeles Rams': 'SoFi Stadium',
-                'Miami Dolphins': 'Hard Rock Stadium',
-                'Minnesota Vikings': 'U.S. Bank Stadium',
-                'New England Patriots': 'Gillette Stadium',
-                'New Orleans Saints': 'Caesars Superdome',
-                'New York Giants': 'MetLife Stadium',
-                'New York Jets': 'MetLife Stadium',
-                'Philadelphia Eagles': 'Lincoln Financial Field',
-                'Pittsburgh Steelers': 'Acrisure Stadium',
-                'San Francisco 49ers': "Levi's Stadium",
-                'Seattle Seahawks': 'Lumen Field',
-                'Tampa Bay Buccaneers': 'Raymond James Stadium',
-                'Tennessee Titans': 'Nissan Stadium',
-                'Washington Commanders': 'FedExField'
-            }
-            return True
-    
-    def get_stadium_coordinates(self):
-        """Coordinates for all NFL stadiums"""
-        return {
-            'Allegiant Stadium': (36.0908, -115.1835),
-            'Arrowhead Stadium': (39.0489, -94.4839),
-            'AT&T Stadium': (32.7473, -97.0945),
-            'Bank of America Stadium': (35.2258, -80.8528),
-            'Caesars Superdome': (29.9511, -90.0811),
-            'Cleveland Browns Stadium': (41.5061, -81.6995),
-            'Empower Field at Mile High': (39.7439, -105.0200),
-            'FedExField': (38.9076, -76.8645),
-            'Ford Field': (42.3400, -83.0456),
-            'GEHA Field at Arrowhead Stadium': (39.0489, -94.4839),
-            'Gillette Stadium': (42.0909, -71.2643),
-            'Hard Rock Stadium': (25.9580, -80.2389),
-            'Highmark Stadium': (42.7738, -78.7870),
-            'Lambeau Field': (44.5013, -88.0622),
-            "Levi's Stadium": (37.4030, -121.9700),
-            'Lucas Oil Stadium': (39.7601, -86.1639),
-            'Lumen Field': (47.5952, -122.3316),
-            'M&T Bank Stadium': (39.2781, -76.6227),
-            'MetLife Stadium': (40.8135, -74.0745),
-            'Lincoln Financial Field': (39.9008, -75.1675),
-            'Nissan Stadium': (36.1665, -86.7713),
-            'NRG Stadium': (29.6847, -95.4108),
-            'Paycor Stadium': (39.0955, -84.5160),
-            'Raymond James Stadium': (27.9759, -82.5033),
-            'SoFi Stadium': (33.9535, -118.3389),
-            'Soldier Field': (41.8623, -87.6167),
-            'State Farm Stadium': (33.5276, -112.2626),
-            'TIAA Bank Field': (30.3239, -81.6373),
-            'U.S. Bank Stadium': (44.9732, -93.2580)
-        }
-    
-    def get_weather_for_stadium(self, stadium_name, game_date=None):
-        """Get weather for a specific stadium using NWS API"""
-        if stadium_name not in self.stadiums:
-            return self.get_mock_weather(stadium_name, game_date)
-        
-        coordinates = self.get_stadium_coordinates()
-        if stadium_name in coordinates:
-            lat, lon = coordinates[stadium_name]
-            weather = self.get_weather_nws(lat, lon)
-            if weather['success']:
-                return weather
-        
-        # Fallback to mock data
-        return self.get_mock_weather(stadium_name, game_date)
-    
-    def get_weather_nws(self, lat, lon):
-        """National Weather Service API (free, no key needed)"""
-        try:
-            points_url = f"https://api.weather.gov/points/{lat},{lon}"
-            response = requests.get(points_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=5)
-            
-            if response.status_code == 200:
-                points_data = response.json()
-                forecast_url = points_data['properties']['forecast']
-                
-                forecast_response = requests.get(forecast_url, headers={'User-Agent': 'NFLPredictor/1.0'}, timeout=5)
-                forecast_data = forecast_response.json()
-                
-                current_weather = forecast_data['properties']['periods'][0]
-                
-                # Extract wind speed number from string like "10 mph"
-                wind_speed_str = current_weather['windSpeed'].split()[0]
-                wind_speed = float(wind_speed_str) if wind_speed_str.replace('.', '').isdigit() else 10
-                
-                return {
-                    'temperature': current_weather['temperature'],
-                    'wind_speed': wind_speed,
-                    'conditions': current_weather['shortForecast'],
-                    'is_raining': any(word in current_weather['shortForecast'].lower() for word in ['rain', 'shower', 'storm', 'drizzle']),
-                    'service': 'nws',
-                    'success': True
-                }
-        except Exception as e:
-            pass
-        
-        return {'success': False, 'temperature': 65, 'wind_speed': 8, 'conditions': 'Unknown', 'is_raining': False, 'service': 'mock'}
-    
-    def get_mock_weather(self, stadium_name, game_date=None):
-        """Fallback mock weather data"""
-        stadium = self.stadiums.get(stadium_name, {})
-        city = stadium.get('city', 'Unknown')
-        
-        month = datetime.now().month if not game_date else datetime.strptime(game_date, '%Y-%m-%d').month
-        
-        # Simple mock based on city and month
-        if city in ['Green Bay', 'Buffalo', 'Chicago', 'Cleveland']:
-            if month in [12, 1, 2]:
-                return {'temperature': 25, 'wind_speed': 15, 'is_raining': False, 'service': 'mock', 'success': True}
-            elif month in [11, 3]:
-                return {'temperature': 45, 'wind_speed': 12, 'is_raining': True, 'service': 'mock', 'success': True}
-        
-        return {'temperature': 65, 'wind_speed': 8, 'is_raining': False, 'service': 'mock', 'success': True}
-
-class WeatherPredictor:
-    def __init__(self):
-        self.weather_analysis = None
-        self.weather_api = WeatherAPI()
-        
-    def load_data(self):
-        """Load weather analysis data"""
-        try:
-            with open('nfl_weather_analysis.json', 'r') as f:
-                self.weather_analysis = json.load(f)
-            return True
-        except Exception as e:
-            # Create minimal weather analysis
-            self.weather_analysis = {
-                "average_impact": {
-                    "rain": -2.5,
-                    "wind_15_20": -1.5,
-                    "wind_20_plus": -3.0,
-                    "cold_32_40": -1.0,
-                    "cold_below_32": -2.0
-                }
-            }
-            return True
-    
-    def get_stadium_weather_impact(self, stadium_name, temperature, wind_speed, is_raining=False):
-        """Calculate weather impact for a specific stadium"""
-        if stadium_name not in self.weather_api.stadiums:
-            return 0, 0  # No adjustment
-        
-        stadium = self.weather_api.stadiums[stadium_name]
-        roof_type = stadium['roof_type']
-        
-        # If domed stadium, weather has minimal impact
-        if roof_type == 'domed':
-            return 0, 0
-        
-        # If retractable roof and bad weather, likely closed
-        if roof_type == 'retractable' and (is_raining or temperature < 40 or wind_speed > 20):
-            return 0, 0
-        
-        # Calculate point adjustment based on our historical analysis
-        point_adjustment = 0
-        
-        # Temperature impact
-        if temperature <= 32:
-            point_adjustment -= 2.0
-        elif temperature <= 45:
-            point_adjustment -= 1.0
-        
-        # Wind impact
-        if wind_speed > 20:
-            point_adjustment -= 2.0
-        elif wind_speed > 15:
-            point_adjustment -= 1.0
-        
-        # Rain impact
-        if is_raining:
-            point_adjustment -= 2.0
-        
-        return point_adjustment, 0
-    
-    def adjust_prediction_for_weather(self, home_team, away_team, projected_home_score, projected_away_score, game_date):
-        """Adjust scores based on weather conditions"""
-        # Get home stadium
-        if home_team not in self.weather_api.team_stadiums:
-            return projected_home_score, projected_away_score, None
-        
-        stadium_name = self.weather_api.team_stadiums[home_team]
-        
-        # Get weather data
-        weather = self.weather_api.get_weather_for_stadium(stadium_name, game_date)
-        
-        if not weather.get('success', False):
-            return projected_home_score, projected_away_score, weather
-        
-        # Get weather impact
-        point_adj, spread_adj = self.get_stadium_weather_impact(
-            stadium_name, 
-            weather['temperature'],
-            weather['wind_speed'],
-            weather['is_raining']
-        )
-        
-        # Apply adjustments
-        adjusted_home_score = max(0, projected_home_score + point_adj)
-        adjusted_away_score = max(0, projected_away_score + point_adj)
-        
-        return adjusted_home_score, adjusted_away_score, weather
-
-class NFLPredictor:
-    def __init__(self):
-        self.model = None
-        self.schedule = None
+        """Initialize the enhanced projector with all available data sources"""
+        # Initialize all attributes first
+        self.rb_data = None
+        self.qb_data = None
+        self.defense_data = None
+        self.offense_data = None
+        self.sos_data = None
+        self.schedule_data = None
         self.odds_data = None
-        self.team_stats = {}
-        self.weather_predictor = WeatherPredictor()
-        self.team_mapping = {
-            'Arizona Cardinals': 'ARI', 'Atlanta Falcons': 'ATL', 'Baltimore Ravens': 'BAL',
-            'Buffalo Bills': 'BUF', 'Carolina Panthers': 'CAR', 'Chicago Bears': 'CHI',
-            'Cincinnati Bengals': 'CIN', 'Cleveland Browns': 'CLE', 'Dallas Cowboys': 'DAL',
-            'Denver Broncos': 'DEN', 'Detroit Lions': 'DET', 'Green Bay Packers': 'GB',
-            'Houston Texans': 'HOU', 'Indianapolis Colts': 'IND', 'Jacksonville Jaguars': 'JAX',
-            'Kansas City Chiefs': 'KC', 'Las Vegas Raiders': 'LV', 'Los Angeles Chargers': 'LAC',
-            'Los Angeles Rams': 'LAR', 'Miami Dolphins': 'MIA', 'Minnesota Vikings': 'MIN',
-            'New England Patriots': 'NE', 'New Orleans Saints': 'NO', 'New York Giants': 'NYG',
-            'New York Jets': 'NYJ', 'Philadelphia Eagles': 'PHI', 'Pittsburgh Steelers': 'PIT',
-            'San Francisco 49ers': 'SF', 'Seattle Seahawks': 'SEA', 'Tampa Bay Buccaneers': 'TB',
-            'Tennessee Titans': 'TEN', 'Washington Commanders': 'WAS'
-        }
+        self.nfl_model = None  # Initialize model attribute
         
-    def load_sos_data(self):
-        """Load SOS data from JSON file"""
+        try:
+            # Load player data
+            self.rb_data = pd.read_csv('RB_season.csv')
+            self.qb_data = pd.read_csv('QB_season.csv')
+            st.success("✅ Player data loaded successfully!")
+            
+        except Exception as e:
+            st.error(f"❌ Error loading player data: {e}")
+        
+        # Load JSON data with error handling for each file
+        self._load_json_data()
+        
+        # Load ML model
+        self._load_ml_model()
+        
+        # Clean the data - fill NaN values
+        self._clean_data()
+    
+    def _load_json_data(self):
+        """Load JSON data files with individual error handling"""
+        # Load defense data
+        try:
+            with open('2025_NFL_DEFENSE.json', 'r') as f:
+                self.defense_data = json.load(f)
+            st.success("✅ Defense data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load defense data: {e}")
+            self.defense_data = []
+        
+        # Load offense data
+        try:
+            with open('2025_NFL_OFFENSE.json', 'r') as f:
+                self.offense_data = json.load(f)
+            st.success("✅ Offense data loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load offense data: {e}")
+            self.offense_data = []
+        
+        # Load strength of schedule data
         try:
             with open('nfl_strength_of_schedule.json', 'r') as f:
-                sos_data = json.load(f)
-            return sos_data['sos_rankings']
+                data = json.load(f)
+                self.sos_data = data.get('sos_rankings', {})
+            st.success("✅ Strength of schedule data loaded successfully!")
         except Exception as e:
-            # Return empty SOS data
-            return {}
-
-    def load_model(self):
-        """Load or train a simple model"""
-        try:
-            # First try to load the pickle file
-            if os.path.exists('nfl_model.pkl'):
-                with open('nfl_model.pkl', 'rb') as f:
-                    loaded_data = pickle.load(f)
-                    
-                # Check if it's a model or a dictionary
-                if hasattr(loaded_data, 'predict_proba'):
-                    self.model = loaded_data
-                    return True
-                else:
-                    st.warning("⚠️ Loaded object is not a model, training new model...")
-            
-            # If no model file or invalid, train a new one
-            return self.train_simple_model()
-            
-        except Exception as e:
-            st.warning(f"⚠️ Model loading failed: {e}. Training new model...")
-            return self.train_simple_model()
-    
-    def train_simple_model(self):
-        """Train a simple model quickly"""
-        try:
-            # Create synthetic training data
-            np.random.seed(42)
-            n_samples = 1000
-            
-            # Generate realistic features: [win_pct, points_for, points_against] for home and away
-            X = np.random.rand(n_samples, 7)
-            
-            # Make features more realistic
-            X[:, 0] = X[:, 0] * 0.8 + 0.1  # home_win_pct between 0.1-0.9
-            X[:, 1] = X[:, 1] * 20 + 15    # home_points_for between 15-35
-            X[:, 2] = X[:, 2] * 15 + 15    # home_points_against between 15-30
-            X[:, 3] = X[:, 3] * 0.8 + 0.1  # away_win_pct between 0.1-0.9
-            X[:, 4] = X[:, 4] * 20 + 15    # away_points_for between 15-35
-            X[:, 5] = X[:, 5] * 15 + 15    # away_points_against between 15-30
-            X[:, 6] = 1                    # home_field_advantage
-            
-            # Generate targets based on reasonable probabilities
-            home_advantage = 0.03  # Home field advantage factor
-            home_win_probs = (X[:, 0] - X[:, 3]) * 0.5 + 0.5 + home_advantage
-            home_win_probs = np.clip(home_win_probs, 0.1, 0.9)
-            
-            # Generate binary outcomes
-            y = (np.random.rand(n_samples) < home_win_probs).astype(int)
-            
-            # Train model
-            self.model = RandomForestClassifier(
-                n_estimators=100, 
-                random_state=42, 
-                max_depth=10,
-                min_samples_split=10
-            )
-            self.model.fit(X, y)
-            
-            # Save the model
-            with open('nfl_model.pkl', 'wb') as f:
-                pickle.dump(self.model, f)
-            
-            return True
-            
-        except Exception as e:
-            st.error(f"❌ Model training failed: {e}")
-            # Create a fallback model
-            self.model = None
-            return False
-    
-    def get_team_abbreviation(self, full_name):
-        """Convert full team name to abbreviation"""
-        return self.team_mapping.get(full_name, full_name)
-    
-    def find_column_name(self, series, possible_names):
-        """Find the correct column name from a list of possibilities in a Series"""
-        for name in possible_names:
-            if name in series.index:
-                return name
-        return None
-    
-    def load_schedule_data(self):
-        """Load schedule data from schedule.json with flexible column names"""
+            st.warning(f"⚠️ Could not load strength of schedule data: {e}")
+            self.sos_data = {}
+        
+        # Load schedule data
         try:
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-            
-            # Handle different schedule formats
-            if isinstance(schedule_data, dict):
-                if 'games' in schedule_data:
-                    self.schedule = pd.DataFrame(schedule_data['games'])
-                elif 'week' in schedule_data:
-                    self.schedule = pd.DataFrame(schedule_data['week'])
-                elif any(key in schedule_data for key in ['home', 'away', 'home_team', 'away_team']):
-                    # Single game format
-                    self.schedule = pd.DataFrame([schedule_data])
+                # Handle different schedule formats
+                if 'Week 10' in schedule_data:
+                    self.schedule_data = schedule_data['Week 10']
                 else:
-                    # Try to find the first list in the dictionary
-                    for key, value in schedule_data.items():
-                        if isinstance(value, list):
-                            self.schedule = pd.DataFrame(value)
-                            break
-                    else:
-                        st.error("❓ Could not find game data in schedule.json")
-                        return False
-            elif isinstance(schedule_data, list):
-                self.schedule = pd.DataFrame(schedule_data)
-            else:
-                st.error("❓ Unknown schedule format")
-                return False
-                
-            return True
-            
+                    self.schedule_data = schedule_data
+            st.success("✅ Schedule data loaded successfully!")
         except Exception as e:
-            st.error(f"❌ Failed to load schedule: {e}")
-            # Create sample schedule as fallback
-            sample_games = [
-                {'home': 'Kansas City Chiefs', 'away': 'Philadelphia Eagles', 'date': '2024-11-15'},
-                {'home': 'San Francisco 49ers', 'away': 'Dallas Cowboys', 'date': '2024-11-15'},
-                {'home': 'Buffalo Bills', 'away': 'Miami Dolphins', 'date': '2024-11-15'}
-            ]
-            self.schedule = pd.DataFrame(sample_games)
-            return True
-    
-    def load_odds_data(self):
-        """Load odds data from odds.json with flexible column names"""
+            st.warning(f"⚠️ Could not load schedule data: {e}")
+            self.schedule_data = []
+        
+        # Load odds data - FIXED: Changed from 'week_10_odds.json' to 'odds.json'
         try:
-            with open('odds.json', 'r') as f:
-                odds_data = json.load(f)
-            
-            # Handle different odds formats
-            if isinstance(odds_data, dict):
-                if 'odds' in odds_data:
-                    self.odds_data = pd.DataFrame(odds_data['odds'])
-                elif any(key in odds_data for key in ['home_team', 'away_team', 'market']):
-                    # Single odds entry
-                    self.odds_data = pd.DataFrame([odds_data])
-                else:
-                    # Try to find the first list in the dictionary
-                    for key, value in odds_data.items():
-                        if isinstance(value, list):
-                            self.odds_data = pd.DataFrame(value)
-                            break
-                    else:
-                        self.odds_data = pd.DataFrame()
-            elif isinstance(odds_data, list):
-                self.odds_data = pd.DataFrame(odds_data)
-            else:
-                self.odds_data = pd.DataFrame()
-                
-            return True
-            
+            with open('odds.json', 'r') as f:  # Fixed filename
+                self.odds_data = json.load(f)
+            st.success("✅ Odds data loaded successfully!")
         except Exception as e:
-            self.odds_data = pd.DataFrame()
-            return True
+            st.warning(f"⚠️ Could not load odds data: {e}")
+            self.odds_data = []  # Always initialize as empty list
     
-    def get_game_info(self, game):
-        """Extract home and away team information from game data with flexible column names"""
-        # Try different possible column names for home team
-        home_col = self.find_column_name(game, ['home', 'home_team', 'Home', 'HomeTeam', 'homeTeam'])
-        away_col = self.find_column_name(game, ['away', 'away_team', 'Away', 'AwayTeam', 'awayTeam'])
-        date_col = self.find_column_name(game, ['date', 'game_date', 'Date', 'gameDate'])
-        
-        if home_col is None or away_col is None:
-            return None, None, None
-        
-        home_full = game[home_col]
-        away_full = game[away_col]
-        game_date = game[date_col] if date_col and pd.notna(game[date_col]) else '2024-11-15'
-        
-        return home_full, away_full, game_date
+    def _load_ml_model(self):
+        """Load the trained NFL model"""
+        try:
+            with open('nfl_model.pkl', 'rb') as f:
+                self.nfl_model = pickle.load(f)
+            st.success("✅ ML model loaded successfully!")
+        except Exception as e:
+            st.warning(f"⚠️ Could not load ML model: {e}")
+            self.nfl_model = None
     
-    def process_odds_data(self):
-        """Process the odds data to match our expected format"""
-        if self.odds_data is None or len(self.odds_data) == 0:
-            return
+    def _clean_data(self):
+        """Clean the data by filling NaN values with appropriate defaults"""
+        # Clean RB data
+        if self.rb_data is not None:
+            rb_numeric_columns = ['RushingYDS', 'RushingTD', 'TouchCarries', 'ReceivingYDS', 'ReceivingRec', 'ReceivingTD']
+            for col in rb_numeric_columns:
+                if col in self.rb_data.columns:
+                    self.rb_data[col] = self.rb_data[col].fillna(0)
         
-        # Create a new processed odds dataframe
-        processed_odds = []
-        
-        for _, row in self.odds_data.iterrows():
-            home_team = row.get('home_team')
-            away_team = row.get('away_team')
-            market = row.get('market')
-            
-            if not home_team or not away_team or not market:
-                continue
-            
-            # Handle different market types
-            if market == 'h2h':
-                # Moneyline odds
-                label_1 = row.get('label_1')
-                odd_1 = row.get('odd_1')
-                label_2 = row.get('label_2') 
-                odd_2 = row.get('odd_2')
-                
-                if label_1 and odd_1:
-                    processed_odds.append({
-                        'home_team': home_team,
-                        'away_team': away_team,
-                        'market': 'h2h',
-                        'label': label_1,
-                        'price': odd_1
-                    })
-                
-                if label_2 and odd_2:
-                    processed_odds.append({
-                        'home_team': home_team,
-                        'away_team': away_team,
-                        'market': 'h2h',
-                        'label': label_2,
-                        'price': odd_2
-                    })
-            
-            elif market == 'spreads':
-                # Spread odds
-                label_1 = row.get('label_1')
-                point_1 = row.get('point_1')
-                odd_1 = row.get('odd_1')
-                
-                if label_1 and point_1 is not None:
-                    processed_odds.append({
-                        'home_team': home_team,
-                        'away_team': away_team,
-                        'market': 'spreads',
-                        'label': label_1,
-                        'point': point_1,
-                        'price': odd_1
-                    })
-            
-            elif market == 'totals':
-                # Total points odds
-                point_1 = row.get('point_1')
-                label_1 = row.get('label_1')
-                odd_1 = row.get('odd_1')
-                label_2 = row.get('label_2')
-                odd_2 = row.get('odd_2')
-                
-                if point_1 is not None:
-                    if label_1 and odd_1:
-                        processed_odds.append({
-                            'home_team': home_team,
-                            'away_team': away_team,
-                            'market': 'totals',
-                            'label': label_1,
-                            'point': point_1,
-                            'price': odd_1
-                        })
-                    
-                    if label_2 and odd_2:
-                        processed_odds.append({
-                            'home_team': home_team,
-                            'away_team': away_team,
-                            'market': 'totals',
-                            'label': label_2,
-                            'point': point_1,  # Same point value for over/under
-                            'price': odd_2
-                        })
-        
-        # Replace the original odds data with processed data
-        if processed_odds:
-            self.odds_data = pd.DataFrame(processed_odds)
+        # Clean QB data
+        if self.qb_data is not None:
+            qb_numeric_columns = ['PassingYDS', 'PassingTD', 'PassingInt', 'RushingYDS', 'RushingTD']
+            for col in qb_numeric_columns:
+                if col in self.qb_data.columns:
+                    self.qb_data[col] = self.qb_data[col].fillna(0)
     
-    def load_data(self):
-        """Load schedule and odds data with SOS integration"""
-        # Load schedule data
-        if not self.load_schedule_data():
-            st.error("Failed to load schedule data")
-            return False
-        
-        # Load odds data
-        if not self.load_odds_data():
-            st.warning("⚠️ Odds data not available, continuing without Vegas odds")
-        
-        # Process odds data to standard format
-        self.process_odds_data()
-        
-        # Load SOS data
-        sos_data = self.load_sos_data()
-        
-        # Load weather integration
-        self.weather_predictor.load_data()
-
-        # Create default team stats with SOS
-        default_stats = {
-            'KC': [0.75, 28.5, 19.2, 0.5], 'BUF': [0.65, 26.8, 21.1, 0.5], 'SF': [0.80, 30.1, 18.5, 0.5],
-            'PHI': [0.70, 27.3, 20.8, 0.5], 'DAL': [0.68, 26.9, 21.3, 0.5], 'BAL': [0.72, 27.8, 19.8, 0.5],
-            'MIA': [0.66, 29.2, 23.1, 0.5], 'CIN': [0.62, 25.7, 22.4, 0.5], 'GB': [0.58, 24.3, 23.7, 0.5],
-            'DET': [0.64, 26.1, 22.9, 0.5], 'LAR': [0.59, 25.8, 23.5, 0.5], 'SEA': [0.55, 24.2, 24.8, 0.5],
-            'LV': [0.45, 21.8, 25.9, 0.5], 'DEN': [0.52, 23.1, 24.2, 0.5], 'LAC': [0.57, 25.3, 24.1, 0.5],
-            'NE': [0.35, 18.9, 27.3, 0.5], 'NYJ': [0.42, 20.5, 26.1, 0.5], 'CHI': [0.48, 22.7, 25.3, 0.5],
-            'MIN': [0.53, 24.8, 23.9, 0.5], 'NO': [0.51, 23.5, 24.4, 0.5], 'ATL': [0.49, 22.9, 24.7, 0.5],
-            'CAR': [0.30, 17.8, 28.5, 0.5], 'JAX': [0.56, 24.6, 23.8, 0.5], 'IND': [0.54, 24.1, 24.0, 0.5],
-            'HOU': [0.50, 23.3, 24.5, 0.5], 'TEN': [0.47, 22.4, 25.1, 0.5], 'CLE': [0.61, 25.2, 22.6, 0.5],
-            'PIT': [0.58, 23.9, 23.4, 0.5], 'NYG': [0.40, 19.8, 26.8, 0.5], 'WAS': [0.43, 21.2, 26.3, 0.5],
-            'ARI': [0.46, 22.1, 25.6, 0.5], 'TB': [0.55, 24.5, 24.2, 0.5]
-        }
-        
-        # Integrate SOS into team stats if available
-        for team_abbr in default_stats.keys():
-            # Find full team name
-            full_name = None
-            for full, abbr in self.team_mapping.items():
-                if abbr == team_abbr:
-                    full_name = full
-                    break
-            
-            if full_name and full_name in sos_data:
-                sos_rating = sos_data[full_name].get('combined_sos', 0.5)
-                # Update SOS in team stats
-                default_stats[team_abbr][3] = sos_rating
-        
-        self.team_stats = default_stats
-        
-        return True
+    def _safe_float(self, value, default=0.0):
+        """Safely convert value to float, handling NaN and None"""
+        if value is None or pd.isna(value):
+            return default
+        try:
+            return float(value)
+        except (ValueError, TypeError):
+            return default
     
-    def get_game_odds(self, home_team, away_team, home_full, away_full):
-        """Aggregate all odds for a specific game"""
-        if self.odds_data is None or len(self.odds_data) == 0:
+    def _get_defense_stats(self, team_name):
+        """Get defense stats for a specific team"""
+        if self.defense_data is None or not self.defense_data:
             return None
-        
-        # Find all rows for this game
-        game_odds_rows = self.odds_data[
-            (self.odds_data['home_team'] == home_full) & 
-            (self.odds_data['away_team'] == away_full)
-        ]
-        
-        if len(game_odds_rows) == 0:
-            # Try with abbreviations
-            game_odds_rows = self.odds_data[
-                (self.odds_data['home_team'] == home_team) & 
-                (self.odds_data['away_team'] == away_team)
-            ]
-        
-        if len(game_odds_rows) == 0:
-            return None
-        
-        # Aggregate odds into a single dictionary
-        odds = {
-            'home_team': home_full,
-            'away_team': away_full,
-            'home_moneyline': None,
-            'away_moneyline': None,
-            'spread': None,
-            'spread_odds': None,
-            'total': None,
-            'over_odds': None,
-            'under_odds': None
-        }
-        
-        for _, row in game_odds_rows.iterrows():
-            market = row.get('market', '')
-            label = row.get('label', '')
-            price = row.get('price', 0)
-            point = row.get('point', None)
-            
-            if market == 'h2h':
-                if label == home_full or label == home_team:
-                    odds['home_moneyline'] = price
-                elif label == away_full or label == away_team:
-                    odds['away_moneyline'] = price
-            
-            elif market == 'spreads':
-                if label == home_full or label == home_team:
-                    odds['spread'] = point
-                    odds['spread_odds'] = price
-            
-            elif market == 'totals':
-                odds['total'] = point
-                if label == 'Over':
-                    odds['over_odds'] = price
-                elif label == 'Under':
-                    odds['under_odds'] = price
-        
-        return odds
+        for team in self.defense_data:
+            if team['Team'] == team_name:
+                return team
+        return None
     
-    def predict_game(self, home_team, away_team):
-        """Predict game outcome using the trained model with SOS"""
-        if home_team not in self.team_stats or away_team not in self.team_stats:
+    def _get_offense_stats(self, team_name):
+        """Get offense stats for a specific team"""
+        if self.offense_data is None or not self.offense_data:
             return None
-            
-        home_stats = self.team_stats[home_team]
-        away_stats = self.team_stats[away_team]
-        
-        # Use only the first 3 stats for each team to match the trained model
-        features = np.array([[
-            home_stats[0], home_stats[1], home_stats[2],
-            away_stats[0], away_stats[1], away_stats[2],
-            1  # Home field advantage
-        ]])
+        for team in self.offense_data:
+            if team['Team'] == team_name:
+                return team
+        return None
+    
+    def get_ml_prediction(self, player_name, opponent_team, position, stat_type):
+        """Get ML model prediction if available"""
+        if self.nfl_model is None:
+            return None
         
         try:
-            if self.model is None:
-                # Fallback prediction based on team stats
-                home_win_prob = 0.5 + (home_stats[0] - away_stats[0]) * 0.3
-                return max(0.1, min(0.9, home_win_prob))
+            # Prepare features for ML model
+            # This would need to be adapted based on your model's expected input format
+            features = self._prepare_ml_features(player_name, opponent_team, position, stat_type)
             
-            probabilities = self.model.predict_proba(features)[0]
-            home_win_prob = probabilities[1]
-            return home_win_prob
+            if features is not None:
+                prediction = self.nfl_model.predict(features)
+                return prediction[0] if hasattr(prediction, '__len__') else prediction
+            return None
         except Exception as e:
-            # Fallback prediction
-            home_win_prob = 0.5 + (home_stats[0] - away_stats[0]) * 0.3
-            return max(0.1, min(0.9, home_win_prob))
+            st.warning(f"ML prediction failed: {e}")
+            return None
     
-    def predict_game_score(self, home_team, away_team, home_win_prob, game_date):
-        """Predict the actual score of the game with weather adjustment"""
-        if home_team not in self.team_stats or away_team not in self.team_stats:
-            return None, None, None
+    def _prepare_ml_features(self, player_name, opponent_team, position, stat_type):
+        """Prepare features for ML model prediction"""
+        # This is a placeholder - you'll need to adapt this based on your model's requirements
+        # and feature engineering
+        try:
+            # Example feature preparation - adjust based on your actual model
+            features = []
             
-        home_offense = self.team_stats[home_team][1]
-        away_offense = self.team_stats[away_team][1]
-        home_defense = self.team_stats[home_team][2]
-        away_defense = self.team_stats[away_team][2]
-        
-        # Adjust for SOS if available
-        home_sos = self.team_stats[home_team][3] if len(self.team_stats[home_team]) > 3 else 0.5
-        away_sos = self.team_stats[away_team][3] if len(self.team_stats[away_team]) > 3 else 0.5
-        
-        # Base score prediction
-        home_score = (home_offense + away_defense) / 2 + (home_win_prob - 0.5) * 7 + (home_sos - 0.5) * 2
-        away_score = (away_offense + home_defense) / 2 - (home_win_prob - 0.5) * 7 + (away_sos - 0.5) * 2
-        
-        home_score = max(10, round(home_score))
-        away_score = max(10, round(away_score))
-        
-        # Apply weather adjustment
-        weather_data = None
-        if hasattr(self, 'weather_predictor') and self.weather_predictor.weather_analysis:
-            home_full = None
-            for full, abbr in self.team_mapping.items():
-                if abbr == home_team:
-                    home_full = full
-                    break
+            # Get player stats
+            if position == 'RB' and self.rb_data is not None:
+                player_stats = self.rb_data[self.rb_data['PlayerName'] == player_name]
+            elif position == 'QB' and self.qb_data is not None:
+                player_stats = self.qb_data[self.qb_data['PlayerName'] == player_name]
+            else:
+                return None
             
-            away_full = None
-            for full, abbr in self.team_mapping.items():
-                if abbr == away_team:
-                    away_full = full
-                    break
+            if player_stats.empty:
+                return None
             
-            if home_full and away_full:
-                home_score, away_score, weather_data = self.weather_predictor.adjust_prediction_for_weather(
-                    home_full, away_full, home_score, away_score, game_date
-                )
+            player_stats = player_stats.iloc[0]
+            defense_stats = self._get_defense_stats(opponent_team)
+            
+            # Add relevant features based on your model's training
+            # This is just an example - use the same features your model was trained on
+            if stat_type == 'rushing_yards':
+                features.extend([
+                    self._safe_float(player_stats.get('RushingYDS', 0)),
+                    self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)),
+                    self._safe_float(player_stats.get('TouchCarries', 0))
+                ])
+            
+            return np.array(features).reshape(1, -1)
+            
+        except Exception as e:
+            st.warning(f"Feature preparation failed: {e}")
+            return None
     
-        return home_score, away_score, weather_data
+    def get_game_context(self, player_team, opponent_team):
+        """Get game context including odds and SOS"""
+        context = {
+            'expected_total': 45.0,
+            'spread': 0.0,
+            'sos_adjustment': 1.0
+        }
+        
+        # Get SOS adjustment
+        if self.sos_data and player_team in self.sos_data:
+            sos_value = self.sos_data[player_team].get('combined_sos', 0.5)
+            context['sos_adjustment'] = 1.0 + (self._safe_float(sos_value) - 0.5) * 0.3
+        
+        # Get game odds - FIXED: Check if odds_data exists and is not None
+        if hasattr(self, 'odds_data') and self.odds_data is not None:
+            for odds in self.odds_data:
+                if (odds.get('home_team') == player_team and odds.get('away_team') == opponent_team) or \
+                   (odds.get('home_team') == opponent_team and odds.get('away_team') == player_team):
+                    if odds.get('market') == 'totals' and odds.get('point'):
+                        context['expected_total'] = self._safe_float(odds['point'], 45.0)
+                    elif odds.get('market') == 'spreads' and odds.get('point'):
+                        context['spread'] = self._safe_float(odds['point'], 0.0)
+        
+        return context
     
-    def convert_prob_to_spread(self, home_win_prob):
-        """Convert win probability to point spread"""
-        if home_win_prob is None:
-            return 0
-            
-        if home_win_prob >= 0.5:
-            spread = -((home_win_prob - 0.5) * 14)
+    def estimate_vegas_line(self, projection, position, stat_type):
+        """Estimate what the Vegas line might have been based on projection"""
+        # Ensure projection is a valid number
+        safe_projection = self._safe_float(projection, 0.0)
+        
+        # These are rough estimates based on common Vegas lines
+        if position == 'RB':
+            if stat_type == 'rushing_yards':
+                # Vegas typically sets lines close to projections but rounded
+                estimated_line = round(safe_projection / 5) * 5  # Round to nearest 5
+                return max(45, min(125, estimated_line))  # Reasonable range for RBs
+            elif stat_type == 'rushing_tds':
+                estimated_line = round(safe_projection * 2) / 2  # Round to nearest 0.5
+                return max(0.5, min(2.5, estimated_line))
+            elif stat_type == 'receiving_yards':
+                estimated_line = round(safe_projection / 5) * 5
+                return max(15, min(80, estimated_line))
+            elif stat_type == 'receptions':
+                estimated_line = round(safe_projection * 2) / 2
+                return max(2.5, min(8.5, estimated_line))
+        
+        elif position == 'QB':
+            if stat_type == 'passing_yards':
+                estimated_line = round(safe_projection / 10) * 10  # Round to nearest 10
+                return max(180, min(350, estimated_line))
+            elif stat_type == 'passing_tds':
+                estimated_line = round(safe_projection * 2) / 2
+                return max(0.5, min(3.5, estimated_line))
+            elif stat_type == 'rushing_yards':
+                estimated_line = round(safe_projection)
+                return max(10, min(60, estimated_line))
+            elif stat_type == 'interceptions':
+                estimated_line = round(safe_projection * 2) / 2
+                return max(0.5, min(2.5, estimated_line))
+        
+        return round(safe_projection)
+    
+    def project_rushing_stats(self, player_name, opponent_team, games_played=9):
+        """Enhanced rushing projections for RBs and rushing QBs"""
+        # Check if we have the necessary data
+        if self.rb_data is None or self.qb_data is None:
+            raise ValueError("Player data not loaded properly")
+        
+        # Check RB data first
+        rb_row = self.rb_data[self.rb_data['PlayerName'] == player_name]
+        if not rb_row.empty:
+            return self._project_rb_rushing(rb_row.iloc[0], opponent_team, games_played)
+        
+        # Check QB data for rushing QBs
+        qb_row = self.qb_data[self.qb_data['PlayerName'] == player_name]
+        if not qb_row.empty:
+            return self._project_qb_rushing(qb_row.iloc[0], opponent_team, games_played)
+        
+        raise ValueError(f"Player '{player_name}' not found in RB or QB data")
+    
+    def _project_rb_rushing(self, rb_stats, opponent_team, games_played):
+        """Project rushing stats for running backs"""
+        player_team = rb_stats['Team']
+        
+        # Get defense and offense stats
+        defense_stats = self._get_defense_stats(opponent_team)
+        if not defense_stats:
+            raise ValueError(f"Defense stats for '{opponent_team}' not found")
+        
+        # Get game context
+        game_context = self.get_game_context(player_team, opponent_team)
+        
+        # Calculate projections with safe float conversions
+        projections = {}
+        
+        # Safely get stats with defaults
+        rb_rush_yds_pg = self._safe_float(rb_stats['RushingYDS']) / games_played
+        def_rush_yds_allowed = self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100))
+        
+        # Game script adjustment
+        game_script = 1.15 if game_context['spread'] > 3 else 0.85 if game_context['spread'] < -3 else 1.0
+        
+        # Get ML prediction if available
+        ml_prediction = self.get_ml_prediction(rb_stats['PlayerName'], opponent_team, 'RB', 'rushing_yards')
+        
+        if ml_prediction is not None:
+            projections['RushingYards'] = ml_prediction
         else:
-            spread = ((0.5 - home_win_prob) * 14)
+            projections['RushingYards'] = (
+                (rb_rush_yds_pg + def_rush_yds_allowed) / 2 * 
+                game_script * game_context['sos_adjustment']
+            )
         
-        return round(spread * 2) / 2
+        # RUSHING TDs
+        rb_rush_td_pg = self._safe_float(rb_stats['RushingTD']) / games_played
+        def_rush_td_allowed = self._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 1.0))
+        
+        projections['RushingTDs'] = (
+            (rb_rush_td_pg + def_rush_td_allowed) / 2 *
+            (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
+        )
+        
+        # CARRIES
+        rb_carries_pg = self._safe_float(rb_stats['TouchCarries']) / games_played
+        def_rush_attempts_allowed = self._safe_float(defense_stats.get('RUSHING ATTEMPTS ALLOWED', 25))
+        
+        projections['Carries'] = (
+            (rb_carries_pg + def_rush_attempts_allowed * 0.3) / 1.3 * game_script
+        )
+        
+        # FANTASY POINTS (Rushing only)
+        projections['FantasyPoints'] = (
+            projections['RushingYards'] * 0.1 +
+            projections['RushingTDs'] * 6
+        )
+        
+        # Add ML prediction info
+        projections['UsedML'] = ml_prediction is not None
+        
+        return projections, rb_stats, defense_stats, game_context, 'RB'
     
-    def predict_total_points(self, home_team, away_team):
-        """Predict total points based on team stats"""
-        if home_team not in self.team_stats or away_team not in self.team_stats:
-            return 45.0
+    def _project_qb_rushing(self, qb_stats, opponent_team, games_played):
+        """Project rushing stats for quarterbacks"""
+        player_team = qb_stats['Team']
+        
+        defense_stats = self._get_defense_stats(opponent_team)
+        if not defense_stats:
+            raise ValueError(f"Defense stats for '{opponent_team}' not found")
+        
+        game_context = self.get_game_context(player_team, opponent_team)
+        
+        projections = {}
+        
+        # RUSHING YARDS
+        qb_rush_yds_pg = self._safe_float(qb_stats['RushingYDS']) / games_played
+        
+        # Get ML prediction if available
+        ml_prediction = self.get_ml_prediction(qb_stats['PlayerName'], opponent_team, 'QB', 'rushing_yards')
+        
+        if ml_prediction is not None:
+            projections['RushingYards'] = ml_prediction
+        else:
+            projections['RushingYards'] = qb_rush_yds_pg * game_context['sos_adjustment']
+        
+        # RUSHING TDs
+        qb_rush_td_pg = self._safe_float(qb_stats['RushingTD']) / games_played
+        
+        projections['RushingTDs'] = qb_rush_td_pg * (game_context['expected_total'] / 45.0)
+        
+        # CARRIES (estimate based on rushing yards)
+        projections['Carries'] = projections['RushingYards'] / 4.5  # Estimate 4.5 yards per carry
+        
+        # FANTASY POINTS (Rushing only)
+        projections['FantasyPoints'] = (
+            projections['RushingYards'] * 0.1 +
+            projections['RushingTDs'] * 6
+        )
+        
+        # Add ML prediction info
+        projections['UsedML'] = ml_prediction is not None
+        
+        return projections, qb_stats, defense_stats, game_context, 'QB'
+    
+    def project_passing_stats(self, qb_name, opponent_team, games_played=9):
+        """Enhanced QB passing projections"""
+        if self.qb_data is None:
+            raise ValueError("QB data not loaded properly")
             
-        home_offense = self.team_stats[home_team][1]
-        away_offense = self.team_stats[away_team][1]
-        home_defense = self.team_stats[home_team][2]
-        away_defense = self.team_stats[away_team][2]
+        qb_row = self.qb_data[self.qb_data['PlayerName'] == qb_name]
+        if qb_row.empty:
+            raise ValueError(f"QB '{qb_name}' not found")
         
-        # Better total prediction considering both teams
-        total = (home_offense + away_offense + home_defense + away_defense) / 2
-        return round(total * 2) / 2
-
-def calculate_cover_probability(model_spread, vegas_spread):
-    """Calculate probability of covering the spread"""
-    if vegas_spread is None:
-        return 50
+        qb_stats = qb_row.iloc[0]
+        player_team = qb_stats['Team']
         
-    # Simple heuristic: the closer model spread is to Vegas spread, the higher the confidence
-    spread_diff = abs(model_spread - vegas_spread)
-    if spread_diff <= 1:
-        return 75  # High confidence
-    elif spread_diff <= 3:
-        return 65  # Medium confidence
-    elif spread_diff <= 6:
-        return 55  # Low confidence
-    else:
-        return 50  # Toss-up
-
-def calculate_over_probability(model_total, vegas_total):
-    """Calculate probability of over hitting"""
-    if vegas_total is None:
-        return 50
+        defense_stats = self._get_defense_stats(opponent_team)
+        if not defense_stats:
+            raise ValueError(f"Defense stats for '{opponent_team}' not found")
         
-    # Simple heuristic based on difference between model and Vegas total
-    total_diff = model_total - vegas_total
-    if total_diff >= 3:
-        return 70  # Strong over
-    elif total_diff >= 1:
-        return 60  # Lean over
-    elif total_diff >= -1:
-        return 50  # Toss-up
-    elif total_diff >= -3:
-        return 40  # Lean under
-    else:
-        return 30  # Strong under
-
-def get_confidence_class(probability):
-    """Get CSS class for confidence level"""
-    if probability >= 70:
-        return "confidence-high"
-    elif probability >= 60:
-        return "confidence-medium"
-    else:
-        return "confidence-low"
-
-def create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data):
-    """Create a professional game card matching the desired layout"""
+        game_context = self.get_game_context(player_team, opponent_team)
+        
+        projections = {}
+        
+        # PASSING YARDS
+        qb_pass_yds_pg = self._safe_float(qb_stats['PassingYDS']) / games_played
+        def_pass_yds_allowed = self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230))
+        
+        # Get ML prediction if available
+        ml_prediction = self.get_ml_prediction(qb_name, opponent_team, 'QB', 'passing_yards')
+        
+        if ml_prediction is not None:
+            projections['PassingYards'] = ml_prediction
+        else:
+            projections['PassingYards'] = (
+                (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
+                (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
+            )
+        
+        # PASSING TDs
+        qb_pass_td_pg = self._safe_float(qb_stats['PassingTD']) / games_played
+        def_pass_td_allowed = self._safe_float(defense_stats.get('PASSING TD ALLOWED', 1.5))
+        
+        projections['PassingTDs'] = (
+            (qb_pass_td_pg + def_pass_td_allowed) / 2 *
+            (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
+        )
+        
+        # INTERCEPTIONS
+        qb_int_pg = self._safe_float(qb_stats['PassingInt']) / games_played
+        
+        projections['Interceptions'] = (
+            (qb_int_pg + self._safe_float(defense_stats.get('INTERCENTIONS', 1.0))) / 2
+        )
+        
+        # PASS ATTEMPTS & COMPLETIONS
+        def_attempts_allowed = self._safe_float(defense_stats.get('PASSING ATTEMPTS ALLOWED', 35))
+        def_completions_allowed = self._safe_float(defense_stats.get('PASSING COMPLETIONS ALLOWED', 23))
+        
+        projections['PassAttempts'] = def_attempts_allowed * (game_context['expected_total'] / 45.0)
+        defense_completion_pct = def_completions_allowed / def_attempts_allowed if def_attempts_allowed > 0 else 0.65
+        projections['Completions'] = projections['PassAttempts'] * defense_completion_pct
+        
+        # FANTASY POINTS (Passing only)
+        projections['FantasyPoints'] = (
+            projections['PassingYards'] * 0.04 +
+            projections['PassingTDs'] * 4 -
+            projections['Interceptions'] * 2
+        )
+        
+        # Add ML prediction info
+        projections['UsedML'] = ml_prediction is not None
+        
+        return projections, qb_stats, defense_stats, game_context
     
-    # Get game info with flexible column names
-    game_info = predictor.get_game_info(game)
-    if game_info is None:
-        return
-        
-    home_full, away_full, game_date = game_info
-    home_team = predictor.get_team_abbreviation(home_full)
-    away_team = predictor.get_team_abbreviation(away_full)
+    def get_available_rushers(self):
+        """Get all players with rushing stats in alphabetical order"""
+        if self.rb_data is None or self.qb_data is None:
+            return []
+        rushers = self.rb_data['PlayerName'].tolist() + self.qb_data['PlayerName'].tolist()
+        return sorted(list(set(rushers)))
     
-    with st.container():
-        st.markdown('<div class="game-card">', unsafe_allow_html=True)
+    def get_available_passers(self):
+        """Get all quarterbacks in alphabetical order"""
+        if self.qb_data is None:
+            return []
+        return sorted(self.qb_data['PlayerName'].tolist())
+    
+    def get_available_teams(self):
+        """Get available teams from defense data in alphabetical order"""
+        teams = set()
+        if self.defense_data:
+            for team in self.defense_data:
+                if 'Team' in team:
+                    teams.add(team['Team'])
+        return sorted(list(teams))
+
+def main():
+    st.set_page_config(
+        page_title="NFL Player Projections",
+        page_icon="🏈", 
+        layout="wide"
+    )
+    
+    st.title("🏈 Enhanced NFL Player Projections")
+    st.markdown("### Advanced Projections with Defense Matchups & Game Context")
+    
+    # Initialize projector
+    if 'projector' not in st.session_state:
+        with st.spinner("Loading data..."):
+            st.session_state.projector = EnhancedNFLProjector()
+    
+    projector = st.session_state.projector
+    
+    # Create tabs for different stats - only Rushing and Passing
+    tab1, tab2 = st.tabs(["🏃‍♂️ Rushing", "🎯 Passing"])
+    
+    with tab1:
+        st.subheader("Rushing Projections")
         
-        # Score Header (like "Broncos 24 @ 21 Raiders")
-        st.markdown(f'<div class="score-header">{away_team} {int(away_score)} @ {int(home_score)} {home_team}</div>', unsafe_allow_html=True)
-        
-        # Three Column Layout
-        col1, col2, col3 = st.columns([1, 1, 1])
+        col1, col2 = st.columns(2)
         
         with col1:
-            # Model Projections Card
-            st.markdown('<div class="projections-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">📊 Model Projections</div>', unsafe_allow_html=True)
-            
-            # Winner Projection in Bubble - ALL CONTENT INSIDE THE BUBBLE
-            model_winner = home_full if home_win_prob > 0.5 else away_full
-            winner_abbr = home_team if home_win_prob > 0.5 else away_team
-            win_prob_pct = home_win_prob * 100 if home_win_prob > 0.5 else (1 - home_win_prob) * 100
-            confidence_class = get_confidence_class(win_prob_pct)
-            
-            st.markdown(f'''
-            <div class="prediction-bubble {confidence_class}">
-                <div class="bubble-title">🏈 {winner_abbr} to Win</div>
-                <div class="bubble-subtitle">{win_prob_pct:.1f}% Probability</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            # Spread Projection in Bubble
-            model_spread = predictor.convert_prob_to_spread(home_win_prob)
-            st.markdown(f'''
-            <div class="prediction-bubble">
-                <div class="bubble-title">📈 Projected Spread</div>
-                <div class="bubble-subtitle">{model_spread:+.1f}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            # Totals Projection in Bubble
-            model_total = predictor.predict_total_points(home_team, away_team)
-            st.markdown(f'''
-            <div class="prediction-bubble">
-                <div class="bubble-title">🎯 Projected Total</div>
-                <div class="bubble-subtitle">{model_total:.1f} Points</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            # Score Projection in Bubble
-            st.markdown(f'''
-            <div class="prediction-bubble">
-                <div class="bubble-title">📊 Projected Score</div>
-                <div class="bubble-subtitle">{away_team}: {int(away_score)} | {home_team}: {int(home_score)}</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)  # Close projections-card
-            
-        with col2:
-            # Vegas Odds Card
-            st.markdown('<div class="odds-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">🎰 Vegas Odds</div>', unsafe_allow_html=True)
-            
-            if game_odds:
-                # Moneyline in Bubbles
-                if game_odds.get('home_moneyline') is not None and game_odds.get('away_moneyline') is not None:
-                    home_ml = game_odds["home_moneyline"]
-                    away_ml = game_odds["away_moneyline"]
-                    
-                    st.markdown(f'''
-                    <div class="prediction-bubble">
-                        <div class="bubble-title">💰 Moneyline</div>
-                        <div class="bubble-subtitle">{home_team}: {home_ml:+}</div>
-                        <div class="bubble-subtitle">{away_team}: {away_ml:+}</div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-                
-                # Spread in Bubble
-                if game_odds.get('spread') is not None:
-                    spread_odds = game_odds.get('spread_odds', '')
-                    st.markdown(f'''
-                    <div class="prediction-bubble">
-                        <div class="bubble-title">📊 Spread</div>
-                        <div class="bubble-subtitle">{game_odds["spread"]:+.1f} ({spread_odds})</div>
-                    </div>
-                    ''', unsafe_allow_html=True)
-                
-                # Total in Bubble
-                if game_odds.get('total') is not None:
-                    over_odds = game_odds.get('over_odds', '')
-                    under_odds = game_odds.get('under_odds', '')
-                    st.markdown(f'''
-                    <div class="prediction-bubble">
-                        <div class="bubble-title">🎯 Total</div>
-                        <div class="bubble-subtitle">{game_odds["total"]} (O: {over_odds} | U: {under_odds})</div>
-                    </div>
-                    ''', unsafe_allow_html=True)
+            available_rushers = projector.get_available_rushers()
+            if not available_rushers:
+                st.error("No rusher data available. Please check your RB and QB CSV files.")
+                rusher_name = st.selectbox("Select Rusher", [""], key="rusher")
             else:
-                st.markdown('''
-                <div class="prediction-bubble">
-                    <div class="bubble-title">🎰 Odds</div>
-                    <div class="bubble-subtitle">Not available</div>
-                </div>
-                ''', unsafe_allow_html=True)
+                rusher_name = st.selectbox("Select Rusher", available_rushers, key="rusher")
             
-            st.markdown('</div>', unsafe_allow_html=True)  # Close odds-card
+            available_teams = projector.get_available_teams()
+            if not available_teams:
+                st.error("No team data available. Please check your defense JSON file.")
+                opponent_team_rush = st.selectbox("Select Opponent Team", [""], key="rush_opponent")
+            else:
+                opponent_team_rush = st.selectbox("Select Opponent Team", available_teams, key="rush_opponent")
             
-            # Weather Card
-            if weather_data and weather_data.get('success'):
-                st.markdown('<div class="weather-card">', unsafe_allow_html=True)
-                st.markdown('<div class="section-title">🌤️ Weather</div>', unsafe_allow_html=True)
-                
-                stadium_name = predictor.weather_predictor.weather_api.team_stadiums.get(home_full, "Unknown Stadium")
-                stadium_info = predictor.weather_predictor.weather_api.stadiums.get(stadium_name, {})
-                roof_type = stadium_info.get('roof_type', 'Unknown')
-                
-                st.markdown(f'''
-                <div class="prediction-bubble">
-                    <div class="bubble-title">🏟️ {stadium_name}</div>
-                    <div class="bubble-subtitle">{weather_data.get('conditions', 'Unknown')}</div>
-                    <div class="bubble-subtitle">{weather_data.get('temperature', 'N/A')}°F | Wind: {weather_data.get('wind_speed', 'N/A')} mph</div>
-                    <div class="bubble-subtitle">Roof: {roof_type.title()}</div>
-                </div>
-                ''', unsafe_allow_html=True)
-                
-                st.markdown('</div>', unsafe_allow_html=True)  # Close weather-card
+            games_played_rush = st.number_input("Games Played This Season", min_value=1, max_value=17, value=9, key="rush_games")
         
-        with col3:
-            # Final Projections Card
-            st.markdown('<div class="final-projections-card">', unsafe_allow_html=True)
-            st.markdown('<div class="section-title">🎯 Betting Recommendations</div>', unsafe_allow_html=True)
-            
-            # Winner Pick with Probability - ALL CONTENT INSIDE BUBBLE
-            win_confidence_class = get_confidence_class(win_prob_pct)
-            st.markdown(f'''
-            <div class="prediction-bubble {win_confidence_class}">
-                <div class="bubble-title">✅ Pick: {winner_abbr}</div>
-                <div class="bubble-subtitle">{win_prob_pct:.0f}% Confidence</div>
-            </div>
-            ''', unsafe_allow_html=True)
-            
-            # Spread Pick - ALL CONTENT INSIDE BUBBLE
-            if game_odds and game_odds.get('spread') is not None:
-                vegas_spread = game_odds['spread']
-                model_spread = predictor.convert_prob_to_spread(home_win_prob)
-                
-                # Determine ATS pick
-                if vegas_spread < 0:  # Home team favored
-                    if model_spread <= vegas_spread:  # Model thinks home covers
-                        ats_pick = f"{home_team} to cover"
-                        ats_abbr = home_team
-                    else:  # Model thinks away covers
-                        ats_pick = f"{away_team} to cover"
-                        ats_abbr = away_team
-                else:  # Away team favored
-                    if model_spread >= vegas_spread:  # Model thinks away covers
-                        ats_pick = f"{away_team} to cover"
-                        ats_abbr = away_team
-                    else:  # Model thinks home covers
-                        ats_pick = f"{home_team} to cover"
-                        ats_abbr = home_team
-                
-                cover_prob = calculate_cover_probability(model_spread, vegas_spread)
-                spread_confidence_class = get_confidence_class(cover_prob)
-                
-                st.markdown(f'''
-                <div class="prediction-bubble {spread_confidence_class}">
-                    <div class="bubble-title">📈 Spread: {ats_abbr}</div>
-                    <div class="bubble-subtitle">{cover_prob}% Confidence</div>
-                </div>
-                ''', unsafe_allow_html=True)
-            
-            # Totals Pick - ALL CONTENT INSIDE BUBBLE
-            if game_odds and game_odds.get('total') is not None:
-                vegas_total = game_odds['total']
-                model_total = predictor.predict_total_points(home_team, away_team)
-                
-                if model_total > vegas_total:
-                    totals_pick = "Over"
-                    totals_symbol = "📈"
-                else:
-                    totals_pick = "Under"
-                    totals_symbol = "📉"
-                
-                over_prob = calculate_over_probability(model_total, vegas_total)
-                if totals_pick == "Under":
-                    over_prob = 100 - over_prob
-                
-                totals_confidence_class = get_confidence_class(over_prob)
-                
-                st.markdown(f'''
-                <div class="prediction-bubble {totals_confidence_class}">
-                    <div class="bubble-title">{totals_symbol} Total: {totals_pick}</div>
-                    <div class="bubble-subtitle">{over_prob}% Confidence</div>
-                </div>
-                ''', unsafe_allow_html=True)
-            
-            st.markdown('</div>', unsafe_allow_html=True)  # Close final-projections-card
-        
-        st.markdown('</div>', unsafe_allow_html=True)  # Close game-card
-def main():
-    # Header with professional tagline
-    st.markdown('<div class="main-header">NFL Prediction Model</div>', unsafe_allow_html=True)
-    st.markdown('<div class="sub-header">🏈 Where Data Meets Destiny • Model Intelligence vs Vegas Wisdom</div>', unsafe_allow_html=True)
+        with col2:
+            if st.button("Generate Rushing Projection", type="primary", key="rush_btn"):
+                try:
+                    projections, player_stats, defense_stats, game_context, position = projector.project_rushing_stats(
+                        rusher_name, opponent_team_rush, games_played_rush
+                    )
+                    
+                    # Display results
+                    st.success(f"📊 Rushing Projection for {rusher_name} ({position}) vs {opponent_team_rush}")
+                    
+                    # Game context
+                    st.write(f"**Game Context:** Expected Total: {game_context['expected_total']} points, Spread: {game_context['spread']:+.1f}")
+                    
+                    # ML model info
+                    if projections.get('UsedML'):
+                        st.info("🤖 **ML Model**: Using machine learning prediction for rushing yards")
+                    else:
+                        st.info("📊 **ML Model**: Using statistical calculation (ML model not available)")
+                    
+                    # Estimate Vegas lines
+                    vegas_rush_yds = projector.estimate_vegas_line(projections['RushingYards'], position, 'rushing_yards')
+                    vegas_rush_tds = projector.estimate_vegas_line(projections['RushingTDs'], position, 'rushing_tds')
+                    
+                    # Projections in columns
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Rushing Yards", f"{projections['RushingYards']:.1f}")
+                        st.metric("Rushing TDs", f"{projections['RushingTDs']:.1f}")
+                        st.metric("Estimated Vegas Line", f"{vegas_rush_yds} yards")
+                    
+                    with col2:
+                        st.metric("Carries", f"{projections['Carries']:.1f}")
+                        st.metric("Fantasy Points", f"{projections['FantasyPoints']:.1f}")
+                        st.metric("TDs Vegas Line", f"{vegas_rush_tds}")
+                    
+                    with col3:
+                        st.metric("Team", player_stats['Team'])
+                        if position == 'RB':
+                            st.metric("Season Rush Yds", int(projector._safe_float(player_stats['RushingYDS'])))
+                        else:
+                            st.metric("Season Rush Yds", int(projector._safe_float(player_stats['RushingYDS'])))
+                    
+                    # Analysis section
+                    st.subheader("📈 Vegas Line Analysis")
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if projections['RushingYards'] > vegas_rush_yds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['RushingYards']:.1f}) > Vegas ({vegas_rush_yds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['RushingYards']:.1f}) < Vegas ({vegas_rush_yds})")
+                    
+                    with col2:
+                        if projections['RushingTDs'] > vegas_rush_tds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['RushingTDs']:.1f}) > Vegas ({vegas_rush_tds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['RushingTDs']:.1f}) < Vegas ({vegas_rush_tds})")
+                    
+                    # Defense info
+                    with st.expander("View Defense Stats"):
+                        st.write(f"**{opponent_team_rush} Rush Defense Allowed Per Game:**")
+                        st.write(f"- Rushing: {projector._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 0))} TDs")
+                        
+                except Exception as e:
+                    st.error(f"Error generating projection: {e}")
+                    st.info("💡 This error might be due to missing data for this player. Try selecting a different player.")
     
-    # Initialize predictor with loading state
-    with st.spinner('Loading NFL predictions...'):
-        predictor = NFLPredictor()
+    with tab2:
+        st.subheader("Passing Projections")
         
-        # Load model and data
-        if not predictor.load_model():
-            st.error("Failed to load model")
-            st.stop()
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            available_passers = projector.get_available_passers()
+            if not available_passers:
+                st.error("No QB data available. Please check your QB CSV file.")
+                qb_name = st.selectbox("Select Quarterback", [""], key="qb")
+            else:
+                qb_name = st.selectbox("Select Quarterback", available_passers, key="qb")
             
-        if not predictor.load_data():
-            st.error("Failed to load data files")
-            st.stop()
-    
-    # Add refresh button
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        if st.button("🔄 Refresh Predictions", use_container_width=True):
-            st.rerun()
-    
-    # Display predictions for each game
-    if predictor.schedule is None or len(predictor.schedule) == 0:
-        st.error("No schedule data loaded")
-        return
-    
-    for _, game in predictor.schedule.iterrows():
-        # Get game info with flexible column names
-        game_info = predictor.get_game_info(game)
-        if game_info is None:
-            continue
+            available_teams = projector.get_available_teams()
+            if not available_teams:
+                st.error("No team data available. Please check your defense JSON file.")
+                opponent_team_qb = st.selectbox("Select Opponent Team", [""], key="qb_opponent")
+            else:
+                opponent_team_qb = st.selectbox("Select Opponent Team", available_teams, key="qb_opponent")
             
-        home_full, away_full, game_date = game_info
-        home_team = predictor.get_team_abbreviation(home_full)
-        away_team = predictor.get_team_abbreviation(away_full)
+            games_played_qb = st.number_input("Games Played This Season", min_value=1, max_value=17, value=9, key="qb_games")
         
-        # Get aggregated odds for this game
-        game_odds = predictor.get_game_odds(home_team, away_team, home_full, away_full)
-        
-        # Make model projections
-        home_win_prob = predictor.predict_game(home_team, away_team)
-        
-        if home_win_prob is None:
-            continue
-        
-        # Get scores with weather adjustment
-        home_score, away_score, weather_data = predictor.predict_game_score(home_team, away_team, home_win_prob, game_date)
-        
-        # Create professional game card
-        create_game_card(predictor, game, game_odds, home_win_prob, home_score, away_score, weather_data)
-        
-        st.markdown("<br>", unsafe_allow_html=True)
+        with col2:
+            if st.button("Generate Passing Projection", type="primary", key="pass_btn"):
+                try:
+                    projections, qb_stats, defense_stats, game_context = projector.project_passing_stats(
+                        qb_name, opponent_team_qb, games_played_qb
+                    )
+                    
+                    # Display results
+                    st.success(f"📊 Passing Projection for {qb_name} vs {opponent_team_qb}")
+                    
+                    # Game context
+                    st.write(f"**Game Context:** Expected Total: {game_context['expected_total']} points, Spread: {game_context['spread']:+.1f}")
+                    
+                    # ML model info
+                    if projections.get('UsedML'):
+                        st.info("🤖 **ML Model**: Using machine learning prediction for passing yards")
+                    else:
+                        st.info("📊 **ML Model**: Using statistical calculation (ML model not available)")
+                    
+                    # Estimate Vegas lines
+                    vegas_pass_yds = projector.estimate_vegas_line(projections['PassingYards'], 'QB', 'passing_yards')
+                    vegas_pass_tds = projector.estimate_vegas_line(projections['PassingTDs'], 'QB', 'passing_tds')
+                    vegas_ints = projector.estimate_vegas_line(projections['Interceptions'], 'QB', 'interceptions')
+                    
+                    # Projections in columns
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        st.metric("Passing Yards", f"{projections['PassingYards']:.1f}")
+                        st.metric("Passing TDs", f"{projections['PassingTDs']:.1f}")
+                        st.metric("Interceptions", f"{projections['Interceptions']:.1f}")
+                    
+                    with col2:
+                        st.metric("Pass Attempts", f"{projections['PassAttempts']:.1f}")
+                        st.metric("Completions", f"{projections['Completions']:.1f}")
+                        st.metric("Fantasy Points", f"{projections['FantasyPoints']:.1f}")
+                    
+                    with col3:
+                        st.metric("Team", qb_stats['Team'])
+                        st.metric("Season Pass Yds", int(projector._safe_float(qb_stats['PassingYDS'])))
+                        st.metric("Vegas Yards Line", f"{vegas_pass_yds}")
+                    
+                    # Vegas lines display
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Vegas TDs Line", f"{vegas_pass_tds}")
+                    with col2:
+                        st.metric("Vegas INTs Line", f"{vegas_ints}")
+                    
+                    # Analysis section
+                    st.subheader("📈 Vegas Line Analysis")
+                    col1, col2, col3 = st.columns(3)
+                    
+                    with col1:
+                        if projections['PassingYards'] > vegas_pass_yds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['PassingYards']:.1f}) > Vegas ({vegas_pass_yds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['PassingYards']:.1f}) < Vegas ({vegas_pass_yds})")
+                    
+                    with col2:
+                        if projections['PassingTDs'] > vegas_pass_tds:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['PassingTDs']:.1f}) > Vegas ({vegas_pass_tds})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['PassingTDs']:.1f}) < Vegas ({vegas_pass_tds})")
+                    
+                    with col3:
+                        if projections['Interceptions'] > vegas_ints:
+                            st.success(f"📈 **OVER PLAY**: Projection ({projections['Interceptions']:.1f}) > Vegas ({vegas_ints})")
+                        else:
+                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['Interceptions']:.1f}) < Vegas ({vegas_ints})")
+                    
+                    # Defense info
+                    with st.expander("View Defense Stats"):
+                        st.write(f"**{opponent_team_qb} Pass Defense Allowed Per Game:**")
+                        st.write(f"- Passing: {projector._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('PASSING TD ALLOWED', 0))} TDs")
+                        st.write(f"- Interceptions: {projector._safe_float(defense_stats.get('INTERCENTIONS', 0)):.1f}")
+                        
+                except Exception as e:
+                    st.error(f"Error generating projection: {e}")
+                    st.info("💡 This error might be due to missing data for this player. Try selecting a different player.")
 
 if __name__ == "__main__":
     main()
