@@ -79,11 +79,12 @@ class EnhancedNFLProjector:
             st.warning(f"⚠️ Could not load schedule data: {e}")
             self.schedule_data = []
         
-        # Load odds data
+        # Load odds data - FIXED: Better debugging for odds data
         try:
             with open('odds.json', 'r') as f:
                 self.odds_data = json.load(f)
             st.success("✅ Odds data loaded successfully!")
+            st.info(f"📊 Loaded odds for {len(self.odds_data)} games")
         except Exception as e:
             st.warning(f"⚠️ Could not load odds data: {e}")
             self.odds_data = []
@@ -167,11 +168,11 @@ class EnhancedNFLProjector:
             return None
     
     def _predict_from_dict(self, features, position, stat_type):
-        """Custom prediction logic for dictionary-based models"""
+        """Custom prediction logic for dictionary-based models - FIXED SCALING"""
         try:
             feature_vector = features.flatten()
             
-            # Simple weighted average prediction
+            # Simple weighted average prediction with BETTER SCALING
             if self.nfl_model.get('model_type') == 'linear':
                 weights = self.nfl_model.get('weights', [1.0] * len(feature_vector))
                 bias = self.nfl_model.get('bias', 0.0)
@@ -179,26 +180,28 @@ class EnhancedNFLProjector:
                 if len(weights) == len(feature_vector):
                     prediction = np.dot(feature_vector, weights) + bias
                     
+                    # Apply REALISTIC position-specific adjustments
                     if position == 'QB' and stat_type == 'passing_yards':
-                        prediction = max(150, min(400, prediction))
+                        prediction = max(150, min(350, prediction))  # More realistic range
                     elif position == 'RB' and stat_type == 'rushing_yards':
-                        prediction = max(20, min(150, prediction))
+                        prediction = max(20, min(120, prediction))   # More realistic range
                     
                     return prediction
             
-            # Fallback: simple average of features with position-based scaling
+            # Fallback: simple average of features with BETTER position-based scaling
             avg_prediction = np.mean(feature_vector)
             
+            # FIXED: Much more realistic scaling factors
             if position == 'QB':
                 if stat_type == 'passing_yards':
-                    return avg_prediction * 25 + 200
+                    return avg_prediction * 15 + 200   # More reasonable scaling
                 elif stat_type == 'rushing_yards':
-                    return avg_prediction * 5 + 15
+                    return avg_prediction * 3 + 10     # More reasonable scaling
             elif position == 'RB':
                 if stat_type == 'rushing_yards':
-                    return avg_prediction * 8 + 40
+                    return avg_prediction * 5 + 40     # More reasonable scaling
             
-            return avg_prediction * 10 + 50
+            return avg_prediction * 8 + 50  # More reasonable default scaling
             
         except Exception as e:
             st.warning(f"Dictionary prediction failed: {e}")
@@ -232,30 +235,30 @@ class EnhancedNFLProjector:
             player_team = player_stats['Team']
             game_context = self.get_game_context(player_team, opponent_team)
             
-            # BASIC FEATURES
+            # BASIC FEATURES - FIXED: Better normalization
             if position == 'RB':
                 features.extend([
-                    self._safe_float(player_stats.get('RushingYDS', 0)) / 9,
-                    self._safe_float(player_stats.get('RushingTD', 0)) / 9,
-                    self._safe_float(player_stats.get('TouchCarries', 0)) / 9,
+                    self._safe_float(player_stats.get('RushingYDS', 0)) / 100,  # Normalized
+                    self._safe_float(player_stats.get('RushingTD', 0)) / 10,    # Normalized
+                    self._safe_float(player_stats.get('TouchCarries', 0)) / 20, # Normalized
                 ])
             elif position == 'QB':
                 features.extend([
-                    self._safe_float(player_stats.get('PassingYDS', 0)) / 9,
-                    self._safe_float(player_stats.get('PassingTD', 0)) / 9,
-                    self._safe_float(player_stats.get('RushingYDS', 0)) / 9,
+                    self._safe_float(player_stats.get('PassingYDS', 0)) / 300,  # Normalized
+                    self._safe_float(player_stats.get('PassingTD', 0)) / 10,    # Normalized
+                    self._safe_float(player_stats.get('RushingYDS', 0)) / 50,   # Normalized
                 ])
             
-            # Defense quality features
+            # Defense quality features - FIXED: Better normalization
             features.extend([
-                self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)) / 100,
-                self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230)) / 200,
+                self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)) / 150,
+                self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230)) / 300,
             ])
             
             # Game context features
             features.extend([
                 game_context['expected_total'] / 50.0,
-                (game_context['spread'] + 10) / 20.0,
+                (game_context['spread'] + 14) / 28.0,   # Normalized -14 to +14 spread
                 game_context['sos_adjustment']
             ])
             
@@ -269,25 +272,48 @@ class EnhancedNFLProjector:
             return None
     
     def get_game_context(self, player_team, opponent_team):
-        """Get game context including odds and SOS"""
+        """Get game context including odds and SOS - FIXED ODDS PARSING"""
         context = {
             'expected_total': 45.0,
             'spread': 0.0,
             'sos_adjustment': 1.0
         }
         
+        # Get SOS adjustment
         if self.sos_data and player_team in self.sos_data:
             sos_value = self.sos_data[player_team].get('combined_sos', 0.5)
             context['sos_adjustment'] = 1.0 + (self._safe_float(sos_value) - 0.5) * 0.3
         
+        # FIXED: Better odds data parsing with debugging
         if hasattr(self, 'odds_data') and self.odds_data is not None:
+            found_odds = False
             for odds in self.odds_data:
-                if (odds.get('home_team') == player_team and odds.get('away_team') == opponent_team) or \
-                   (odds.get('home_team') == opponent_team and odds.get('away_team') == player_team):
-                    if odds.get('market') == 'totals' and odds.get('point'):
-                        context['expected_total'] = self._safe_float(odds['point'], 45.0)
-                    elif odds.get('market') == 'spreads' and odds.get('point'):
-                        context['spread'] = self._safe_float(odds['point'], 0.0)
+                # Debug: show what we're looking at
+                home_team = odds.get('home_team', '')
+                away_team = odds.get('away_team', '')
+                market = odds.get('market', '')
+                point = odds.get('point', '')
+                
+                # Check if this is the right game
+                if (home_team == player_team and away_team == opponent_team) or \
+                   (home_team == opponent_team and away_team == player_team):
+                    
+                    if market == 'totals' and point:
+                        context['expected_total'] = self._safe_float(point, 45.0)
+                        found_odds = True
+                        st.sidebar.success(f"📊 Found totals: {point} for {home_team} vs {away_team}")
+                    elif market == 'spreads' and point:
+                        # Determine spread direction based on which team is which
+                        if home_team == player_team:
+                            context['spread'] = -self._safe_float(point, 0.0)  # Home team favored
+                        else:
+                            context['spread'] = self._safe_float(point, 0.0)   # Away team underdog
+                        found_odds = True
+                        st.sidebar.success(f"📊 Found spread: {point} for {home_team} vs {away_team}")
+            
+            if not found_odds:
+                st.sidebar.warning(f"⚠️ No odds found for {player_team} vs {opponent_team}")
+                st.sidebar.info(f"Looking for teams: {player_team} and {opponent_team}")
         
         return context
     
@@ -453,8 +479,17 @@ class EnhancedNFLProjector:
         ml_prediction = self.get_ml_prediction(qb_name, opponent_team, 'QB', 'passing_yards')
         
         if ml_prediction is not None:
-            projections['PassingYards'] = ml_prediction
-            projections['UsedML'] = True
+            # FIXED: Use more reasonable ML prediction or fallback
+            if ml_prediction > 400:  # If prediction is unrealistic
+                st.warning("ML prediction seems unrealistic, using statistical calculation")
+                projections['PassingYards'] = (
+                    (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
+                    (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
+                )
+                projections['UsedML'] = False
+            else:
+                projections['PassingYards'] = ml_prediction
+                projections['UsedML'] = True
         else:
             projections['PassingYards'] = (
                 (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
@@ -533,6 +568,14 @@ def main():
     # Display model info
     if projector.model_type:
         st.sidebar.info(f"🤖 Model Type: {projector.model_type.upper()}")
+    
+    # Debug odds data
+    if projector.odds_data:
+        st.sidebar.info(f"📊 Odds data: {len(projector.odds_data)} games loaded")
+        if st.sidebar.checkbox("Show Odds Debug Info"):
+            st.sidebar.write("First 3 odds entries:")
+            for i, odds in enumerate(projector.odds_data[:3]):
+                st.sidebar.write(f"{i+1}. {odds.get('home_team')} vs {odds.get('away_team')} - {odds.get('market')}: {odds.get('point')}")
     
     # Create tabs for different stats
     tab1, tab2 = st.tabs(["🏃‍♂️ Rushing", "🎯 Passing"])
