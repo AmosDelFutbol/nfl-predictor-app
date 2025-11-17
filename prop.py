@@ -374,6 +374,154 @@ class EnhancedNFLProjector:
                 if 'Team' in team:
                     teams.add(team['Team'])
         return sorted(list(teams))
+    
+    def get_players_playing_this_week(self):
+        """Get all players who are playing this week based on schedule"""
+        playing_players = {
+            'rushers': [],
+            'passers': []
+        }
+        
+        if not self.schedule_data:
+            st.warning("No schedule data available")
+            return playing_players
+        
+        # Extract all teams playing this week
+        playing_teams = set()
+        for game in self.schedule_data:
+            if 'home_team' in game and 'away_team' in game:
+                playing_teams.add(game['home_team'])
+                playing_teams.add(game['away_team'])
+        
+        # Get matchups for each team
+        team_matchups = {}
+        for game in self.schedule_data:
+            if 'home_team' in game and 'away_team' in game:
+                team_matchups[game['home_team']] = game['away_team']
+                team_matchups[game['away_team']] = game['home_team']
+        
+        # Find rushers playing this week
+        if self.rb_data is not None:
+            for _, player in self.rb_data.iterrows():
+                if player['Team'] in playing_teams:
+                    playing_players['rushers'].append({
+                        'name': player['PlayerName'],
+                        'team': player['Team'],
+                        'opponent': team_matchups.get(player['Team'], 'Unknown'),
+                        'position': 'RB'
+                    })
+        
+        # Find QBs playing this week (both for passing and rushing)
+        if self.qb_data is not None:
+            for _, player in self.qb_data.iterrows():
+                if player['Team'] in playing_teams:
+                    playing_players['passers'].append({
+                        'name': player['PlayerName'],
+                        'team': player['Team'],
+                        'opponent': team_matchups.get(player['Team'], 'Unknown'),
+                        'position': 'QB'
+                    })
+                    # Also add QBs to rushers list for rushing projections
+                    playing_players['rushers'].append({
+                        'name': player['PlayerName'],
+                        'team': player['Team'],
+                        'opponent': team_matchups.get(player['Team'], 'Unknown'),
+                        'position': 'QB'
+                    })
+        
+        # Sort alphabetically
+        playing_players['rushers'] = sorted(playing_players['rushers'], key=lambda x: x['name'])
+        playing_players['passers'] = sorted(playing_players['passers'], key=lambda x: x['name'])
+        
+        return playing_players
+    
+    def generate_all_rushing_projections(self, games_played=9):
+        """Generate rushing projections for all players playing this week"""
+        playing_players = self.get_players_playing_this_week()
+        projections = []
+        
+        for player_info in playing_players['rushers']:
+            try:
+                player_proj, player_stats, defense_stats, game_context, position = self.project_rushing_stats(
+                    player_info['name'], player_info['opponent'], games_played
+                )
+                
+                # Calculate total fantasy points (rushing + receiving if available)
+                total_fantasy_points = player_proj['FantasyPoints']
+                
+                # Add receiving projections for RBs if available
+                if position == 'RB' and 'ReceivingYDS' in player_stats and 'ReceivingTD' in player_stats:
+                    receiving_yds_pg = self._safe_float(player_stats['ReceivingYDS']) / games_played
+                    receiving_tds_pg = self._safe_float(player_stats['ReceivingTD']) / games_played
+                    
+                    # Simple receiving projection
+                    receiving_yds_proj = receiving_yds_pg * game_context['sos_adjustment']
+                    receiving_tds_proj = receiving_tds_pg * (game_context['expected_total'] / 45.0)
+                    
+                    receiving_points = receiving_yds_proj * 0.1 + receiving_tds_proj * 6
+                    total_fantasy_points += receiving_points
+                
+                projections.append({
+                    'Player': player_info['name'],
+                    'Team': player_info['team'],
+                    'Opponent': player_info['opponent'],
+                    'Position': position,
+                    'RushingYards': player_proj['RushingYards'],
+                    'RushingTDs': player_proj['RushingTDs'],
+                    'Carries': player_proj['Carries'],
+                    'FantasyPoints': total_fantasy_points,
+                    'GameTotal': game_context['expected_total'],
+                    'Spread': game_context['spread']
+                })
+                
+            except Exception as e:
+                st.warning(f"Could not generate projection for {player_info['name']}: {e}")
+                continue
+        
+        return sorted(projections, key=lambda x: x['FantasyPoints'], reverse=True)
+    
+    def generate_all_passing_projections(self, games_played=9):
+        """Generate passing projections for all QBs playing this week"""
+        playing_players = self.get_players_playing_this_week()
+        projections = []
+        
+        for player_info in playing_players['passers']:
+            try:
+                player_proj, player_stats, defense_stats, game_context = self.project_passing_stats(
+                    player_info['name'], player_info['opponent'], games_played
+                )
+                
+                # Add rushing points for QBs
+                try:
+                    rush_proj, _, _, _, _ = self.project_rushing_stats(
+                        player_info['name'], player_info['opponent'], games_played
+                    )
+                    rushing_points = rush_proj['FantasyPoints']
+                except:
+                    rushing_points = 0
+                
+                total_fantasy_points = player_proj['FantasyPoints'] + rushing_points
+                
+                projections.append({
+                    'Player': player_info['name'],
+                    'Team': player_info['team'],
+                    'Opponent': player_info['opponent'],
+                    'Position': 'QB',
+                    'PassingYards': player_proj['PassingYards'],
+                    'PassingTDs': player_proj['PassingTDs'],
+                    'Interceptions': player_proj['Interceptions'],
+                    'PassAttempts': player_proj['PassAttempts'],
+                    'Completions': player_proj['Completions'],
+                    'FantasyPoints': total_fantasy_points,
+                    'GameTotal': game_context['expected_total'],
+                    'Spread': game_context['spread']
+                })
+                
+            except Exception as e:
+                st.warning(f"Could not generate projection for {player_info['name']}: {e}")
+                continue
+        
+        return sorted(projections, key=lambda x: x['FantasyPoints'], reverse=True)
 
 def main():
     st.set_page_config(
@@ -392,11 +540,127 @@ def main():
     
     projector = st.session_state.projector
     
-    # Create tabs for different stats - only Rushing and Passing
-    tab1, tab2 = st.tabs(["🏃‍♂️ Rushing", "🎯 Passing"])
+    # Create tabs for different views
+    tab1, tab2, tab3 = st.tabs(["🏃‍♂️ All Rushers", "🎯 All Passers", "🔍 Single Player"])
     
     with tab1:
-        st.subheader("Rushing Projections")
+        st.subheader("All Rushing Projections for This Week")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col2:
+            games_played_rush = st.number_input("Games Played", min_value=1, max_value=17, value=9, key="all_rush_games")
+            if st.button("Generate All Rushing Projections", type="primary", key="all_rush_btn"):
+                with st.spinner("Generating projections for all rushers..."):
+                    all_rush_projections = projector.generate_all_rushing_projections(games_played_rush)
+                    st.session_state.all_rush_projections = all_rush_projections
+        
+        with col1:
+            search_rush = st.text_input("🔍 Search Rushers", placeholder="Type to search players...")
+        
+        # Display all rushing projections
+        if 'all_rush_projections' in st.session_state and st.session_state.all_rush_projections:
+            projections_df = pd.DataFrame(st.session_state.all_rush_projections)
+            
+            # Filter based on search
+            if search_rush:
+                filtered_df = projections_df[projections_df['Player'].str.contains(search_rush, case=False, na=False)]
+            else:
+                filtered_df = projections_df
+            
+            # Display metrics
+            st.metric("Total Players Projected", len(filtered_df))
+            
+            # Display table
+            st.dataframe(
+                filtered_df,
+                column_config={
+                    "Player": "Player",
+                    "Team": "Team", 
+                    "Opponent": "Opponent",
+                    "Position": "Position",
+                    "RushingYards": st.column_config.NumberColumn("Rush Yds", format="%.1f"),
+                    "RushingTDs": st.column_config.NumberColumn("Rush TDs", format="%.1f"),
+                    "Carries": st.column_config.NumberColumn("Carries", format="%.1f"),
+                    "FantasyPoints": st.column_config.NumberColumn("FP", format="%.1f"),
+                    "GameTotal": st.column_config.NumberColumn("Game Total", format="%.1f"),
+                    "Spread": st.column_config.NumberColumn("Spread", format="%+.1f")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            # Download button
+            csv = filtered_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Rushing Projections as CSV",
+                data=csv,
+                file_name="rushing_projections.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Click 'Generate All Rushing Projections' to see all players")
+    
+    with tab2:
+        st.subheader("All Passing Projections for This Week")
+        
+        col1, col2 = st.columns([3, 1])
+        
+        with col2:
+            games_played_pass = st.number_input("Games Played", min_value=1, max_value=17, value=9, key="all_pass_games")
+            if st.button("Generate All Passing Projections", type="primary", key="all_pass_btn"):
+                with st.spinner("Generating projections for all passers..."):
+                    all_pass_projections = projector.generate_all_passing_projections(games_played_pass)
+                    st.session_state.all_pass_projections = all_pass_projections
+        
+        with col1:
+            search_pass = st.text_input("🔍 Search Passers", placeholder="Type to search QBs...")
+        
+        # Display all passing projections
+        if 'all_pass_projections' in st.session_state and st.session_state.all_pass_projections:
+            projections_df = pd.DataFrame(st.session_state.all_pass_projections)
+            
+            # Filter based on search
+            if search_pass:
+                filtered_df = projections_df[projections_df['Player'].str.contains(search_pass, case=False, na=False)]
+            else:
+                filtered_df = projections_df
+            
+            # Display metrics
+            st.metric("Total QBs Projected", len(filtered_df))
+            
+            # Display table
+            st.dataframe(
+                filtered_df,
+                column_config={
+                    "Player": "Player",
+                    "Team": "Team", 
+                    "Opponent": "Opponent",
+                    "Position": "Position",
+                    "PassingYards": st.column_config.NumberColumn("Pass Yds", format="%.1f"),
+                    "PassingTDs": st.column_config.NumberColumn("Pass TDs", format="%.1f"),
+                    "Interceptions": st.column_config.NumberColumn("INTs", format="%.1f"),
+                    "FantasyPoints": st.column_config.NumberColumn("FP", format="%.1f"),
+                    "GameTotal": st.column_config.NumberColumn("Game Total", format="%.1f"),
+                    "Spread": st.column_config.NumberColumn("Spread", format="%+.1f")
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            # Download button
+            csv = filtered_df.to_csv(index=False)
+            st.download_button(
+                label="📥 Download Passing Projections as CSV",
+                data=csv,
+                file_name="passing_projections.csv",
+                mime="text/csv"
+            )
+        else:
+            st.info("Click 'Generate All Passing Projections' to see all QBs")
+    
+    with tab3:
+        st.subheader("Single Player Projection")
         
         col1, col2 = st.columns(2)
         
@@ -474,103 +738,6 @@ def main():
                     with st.expander("View Defense Stats"):
                         st.write(f"**{opponent_team_rush} Rush Defense Allowed Per Game:**")
                         st.write(f"- Rushing: {projector._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 0))} TDs")
-                        
-                except Exception as e:
-                    st.error(f"Error generating projection: {e}")
-                    st.info("💡 This error might be due to missing data for this player. Try selecting a different player.")
-    
-    with tab2:
-        st.subheader("Passing Projections")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            available_passers = projector.get_available_passers()
-            if not available_passers:
-                st.error("No QB data available. Please check your QB CSV file.")
-                qb_name = st.selectbox("Select Quarterback", [""], key="qb")
-            else:
-                qb_name = st.selectbox("Select Quarterback", available_passers, key="qb")
-            
-            available_teams = projector.get_available_teams()
-            if not available_teams:
-                st.error("No team data available. Please check your defense JSON file.")
-                opponent_team_qb = st.selectbox("Select Opponent Team", [""], key="qb_opponent")
-            else:
-                opponent_team_qb = st.selectbox("Select Opponent Team", available_teams, key="qb_opponent")
-            
-            games_played_qb = st.number_input("Games Played This Season", min_value=1, max_value=17, value=9, key="qb_games")
-        
-        with col2:
-            if st.button("Generate Passing Projection", type="primary", key="pass_btn"):
-                try:
-                    projections, qb_stats, defense_stats, game_context = projector.project_passing_stats(
-                        qb_name, opponent_team_qb, games_played_qb
-                    )
-                    
-                    # Display results
-                    st.success(f"📊 Passing Projection for {qb_name} vs {opponent_team_qb}")
-                    
-                    # Game context
-                    st.write(f"**Game Context:** Expected Total: {game_context['expected_total']} points, Spread: {game_context['spread']:+.1f}")
-                    
-                    # Estimate Vegas lines
-                    vegas_pass_yds = projector.estimate_vegas_line(projections['PassingYards'], 'QB', 'passing_yards')
-                    vegas_pass_tds = projector.estimate_vegas_line(projections['PassingTDs'], 'QB', 'passing_tds')
-                    vegas_ints = projector.estimate_vegas_line(projections['Interceptions'], 'QB', 'interceptions')
-                    
-                    # Projections in columns
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.metric("Passing Yards", f"{projections['PassingYards']:.1f}")
-                        st.metric("Passing TDs", f"{projections['PassingTDs']:.1f}")
-                        st.metric("Interceptions", f"{projections['Interceptions']:.1f}")
-                    
-                    with col2:
-                        st.metric("Pass Attempts", f"{projections['PassAttempts']:.1f}")
-                        st.metric("Completions", f"{projections['Completions']:.1f}")
-                        st.metric("Fantasy Points", f"{projections['FantasyPoints']:.1f}")
-                    
-                    with col3:
-                        st.metric("Team", qb_stats['Team'])
-                        st.metric("Season Pass Yds", int(projector._safe_float(qb_stats['PassingYDS'])))
-                        st.metric("Vegas Yards Line", f"{vegas_pass_yds}")
-                    
-                    # Vegas lines display
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Vegas TDs Line", f"{vegas_pass_tds}")
-                    with col2:
-                        st.metric("Vegas INTs Line", f"{vegas_ints}")
-                    
-                    # Analysis section
-                    st.subheader("📈 Vegas Line Analysis")
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        if projections['PassingYards'] > vegas_pass_yds:
-                            st.success(f"📈 **OVER PLAY**: Projection ({projections['PassingYards']:.1f}) > Vegas ({vegas_pass_yds})")
-                        else:
-                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['PassingYards']:.1f}) < Vegas ({vegas_pass_yds})")
-                    
-                    with col2:
-                        if projections['PassingTDs'] > vegas_pass_tds:
-                            st.success(f"📈 **OVER PLAY**: Projection ({projections['PassingTDs']:.1f}) > Vegas ({vegas_pass_tds})")
-                        else:
-                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['PassingTDs']:.1f}) < Vegas ({vegas_pass_tds})")
-                    
-                    with col3:
-                        if projections['Interceptions'] > vegas_ints:
-                            st.success(f"📈 **OVER PLAY**: Projection ({projections['Interceptions']:.1f}) > Vegas ({vegas_ints})")
-                        else:
-                            st.error(f"📉 **UNDER PLAY**: Projection ({projections['Interceptions']:.1f}) < Vegas ({vegas_ints})")
-                    
-                    # Defense info
-                    with st.expander("View Defense Stats"):
-                        st.write(f"**{opponent_team_qb} Pass Defense Allowed Per Game:**")
-                        st.write(f"- Passing: {projector._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 0))} yds, {projector._safe_float(defense_stats.get('PASSING TD ALLOWED', 0))} TDs")
-                        st.write(f"- Interceptions: {projector._safe_float(defense_stats.get('INTERCENTIONS', 0)):.1f}")
                         
                 except Exception as e:
                     st.error(f"Error generating projection: {e}")
