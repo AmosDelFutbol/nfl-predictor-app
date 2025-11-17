@@ -70,51 +70,53 @@ class EnhancedNFLProjector:
         try:
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-                if 'Week 10' in schedule_data:
-                    self.schedule_data = schedule_data['Week 10']
-                else:
+                # Try different possible structures
+                if isinstance(schedule_data, dict):
+                    if 'Week 10' in schedule_data:
+                        self.schedule_data = schedule_data['Week 10']
+                    elif 'week_10' in schedule_data:
+                        self.schedule_data = schedule_data['week_10']
+                    elif 'games' in schedule_data:
+                        self.schedule_data = schedule_data['games']
+                    else:
+                        # Take the first value if it's a dict with nested structure
+                        first_key = next(iter(schedule_data.keys()))
+                        if isinstance(schedule_data[first_key], list):
+                            self.schedule_data = schedule_data[first_key]
+                        else:
+                            self.schedule_data = schedule_data
+                elif isinstance(schedule_data, list):
                     self.schedule_data = schedule_data
-            st.success("✅ Schedule data loaded successfully!")
+                else:
+                    self.schedule_data = []
+            
+            st.success(f"✅ Schedule data loaded successfully! Found {len(self.schedule_data)} games")
+            
         except Exception as e:
             st.warning(f"⚠️ Could not load schedule data: {e}")
             self.schedule_data = []
         
-        # Load odds data - FIXED: Better debugging for odds data
+        # Load odds data
         try:
             with open('odds.json', 'r') as f:
                 self.odds_data = json.load(f)
             st.success("✅ Odds data loaded successfully!")
-            st.info(f"📊 Loaded odds for {len(self.odds_data)} games")
         except Exception as e:
             st.warning(f"⚠️ Could not load odds data: {e}")
             self.odds_data = []
     
     def _load_ml_model(self):
-        """Load the trained NFL model with better type detection"""
+        """Load the trained NFL model"""
         try:
             with open('nfl_model.pkl', 'rb') as f:
-                loaded_data = pickle.load(f)
-            
-            if hasattr(loaded_data, 'predict'):
-                self.nfl_model = loaded_data
-                self.model_type = 'sklearn'
-                st.success("✅ ML model (scikit-learn) loaded successfully!")
-            elif isinstance(loaded_data, dict):
-                self.nfl_model = loaded_data
-                self.model_type = 'dict'
-                st.success("✅ Model parameters (dict) loaded successfully!")
-            else:
-                st.warning(f"⚠️ Unknown model type: {type(loaded_data)}")
-                self.nfl_model = None
-                self.model_type = None
-                
+                self.nfl_model = pickle.load(f)
+            st.success("✅ ML model loaded successfully!")
         except Exception as e:
             st.warning(f"⚠️ Could not load ML model: {e}")
             self.nfl_model = None
-            self.model_type = None
     
     def _clean_data(self):
-        """Clean the data by filling NaN values with appropriate defaults"""
+        """Clean the data by filling NaN values"""
         if self.rb_data is not None:
             rb_numeric_columns = ['RushingYDS', 'RushingTD', 'TouchCarries', 'ReceivingYDS', 'ReceivingRec', 'ReceivingTD']
             for col in rb_numeric_columns:
@@ -128,7 +130,7 @@ class EnhancedNFLProjector:
                     self.qb_data[col] = self.qb_data[col].fillna(0)
     
     def _safe_float(self, value, default=0.0):
-        """Safely convert value to float, handling NaN and None"""
+        """Safely convert value to float"""
         if value is None or pd.isna(value):
             return default
         try:
@@ -138,141 +140,20 @@ class EnhancedNFLProjector:
     
     def _get_defense_stats(self, team_name):
         """Get defense stats for a specific team"""
-        if self.defense_data is None or not self.defense_data:
-            return None
-        for team in self.defense_data:
-            if team['Team'] == team_name:
-                return team
-        return None
-    
-    def get_ml_prediction(self, player_name, opponent_team, position, stat_type):
-        """Get ML model prediction if available"""
-        if self.nfl_model is None:
+        if not self.defense_data:
             return None
         
-        try:
-            features = self._prepare_ml_features(player_name, opponent_team, position, stat_type)
-            
-            if features is not None and features.size > 0:
-                if self.model_type == 'sklearn':
-                    prediction = self.nfl_model.predict(features)
-                    return prediction[0] if hasattr(prediction, '__len__') else prediction
-                elif self.model_type == 'dict':
-                    return self._predict_from_dict(features, position, stat_type)
-                else:
-                    return None
-            else:
-                return None
-        except Exception as e:
-            st.warning(f"ML prediction failed: {e}")
-            return None
-    
-    def _predict_from_dict(self, features, position, stat_type):
-        """Custom prediction logic for dictionary-based models - FIXED SCALING"""
-        try:
-            feature_vector = features.flatten()
-            
-            # Simple weighted average prediction with BETTER SCALING
-            if self.nfl_model.get('model_type') == 'linear':
-                weights = self.nfl_model.get('weights', [1.0] * len(feature_vector))
-                bias = self.nfl_model.get('bias', 0.0)
-                
-                if len(weights) == len(feature_vector):
-                    prediction = np.dot(feature_vector, weights) + bias
-                    
-                    # Apply REALISTIC position-specific adjustments
-                    if position == 'QB' and stat_type == 'passing_yards':
-                        prediction = max(150, min(350, prediction))  # More realistic range
-                    elif position == 'RB' and stat_type == 'rushing_yards':
-                        prediction = max(20, min(120, prediction))   # More realistic range
-                    
-                    return prediction
-            
-            # Fallback: simple average of features with BETTER position-based scaling
-            avg_prediction = np.mean(feature_vector)
-            
-            # FIXED: Much more realistic scaling factors
-            if position == 'QB':
-                if stat_type == 'passing_yards':
-                    return avg_prediction * 15 + 200   # More reasonable scaling
-                elif stat_type == 'rushing_yards':
-                    return avg_prediction * 3 + 10     # More reasonable scaling
-            elif position == 'RB':
-                if stat_type == 'rushing_yards':
-                    return avg_prediction * 5 + 40     # More reasonable scaling
-            
-            return avg_prediction * 8 + 50  # More reasonable default scaling
-            
-        except Exception as e:
-            st.warning(f"Dictionary prediction failed: {e}")
-            return None
-    
-    def _prepare_ml_features(self, player_name, opponent_team, position, stat_type):
-        """Prepare features for ML model prediction"""
-        try:
-            features = []
-            
-            # Get player stats
-            player_stats = None
-            if position == 'RB' and self.rb_data is not None:
-                player_stats_df = self.rb_data[self.rb_data['PlayerName'] == player_name]
-                if not player_stats_df.empty:
-                    player_stats = player_stats_df.iloc[0]
-            elif position == 'QB' and self.qb_data is not None:
-                player_stats_df = self.qb_data[self.qb_data['PlayerName'] == player_name]
-                if not player_stats_df.empty:
-                    player_stats = player_stats_df.iloc[0]
-            
-            if player_stats is None:
-                return None
-            
-            # Get defense stats
-            defense_stats = self._get_defense_stats(opponent_team)
-            if defense_stats is None:
-                return None
-            
-            # Get game context
-            player_team = player_stats['Team']
-            game_context = self.get_game_context(player_team, opponent_team)
-            
-            # BASIC FEATURES - FIXED: Better normalization
-            if position == 'RB':
-                features.extend([
-                    self._safe_float(player_stats.get('RushingYDS', 0)) / 100,  # Normalized
-                    self._safe_float(player_stats.get('RushingTD', 0)) / 10,    # Normalized
-                    self._safe_float(player_stats.get('TouchCarries', 0)) / 20, # Normalized
-                ])
-            elif position == 'QB':
-                features.extend([
-                    self._safe_float(player_stats.get('PassingYDS', 0)) / 300,  # Normalized
-                    self._safe_float(player_stats.get('PassingTD', 0)) / 10,    # Normalized
-                    self._safe_float(player_stats.get('RushingYDS', 0)) / 50,   # Normalized
-                ])
-            
-            # Defense quality features - FIXED: Better normalization
-            features.extend([
-                self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100)) / 150,
-                self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230)) / 300,
-            ])
-            
-            # Game context features
-            features.extend([
-                game_context['expected_total'] / 50.0,
-                (game_context['spread'] + 14) / 28.0,   # Normalized -14 to +14 spread
-                game_context['sos_adjustment']
-            ])
-            
-            if len(features) == 0:
-                return None
-            
-            return np.array(features).reshape(1, -1)
-            
-        except Exception as e:
-            st.warning(f"Feature preparation failed: {e}")
-            return None
+        # Try different team name formats
+        team_variations = [team_name, team_name.upper(), team_name.lower()]
+        
+        for team in self.defense_data:
+            if team.get('Team') in team_variations:
+                return team
+        
+        return None
     
     def get_game_context(self, player_team, opponent_team):
-        """Get game context including odds and SOS - FIXED ODDS PARSING"""
+        """Get game context including odds and SOS"""
         context = {
             'expected_total': 45.0,
             'spread': 0.0,
@@ -284,35 +165,25 @@ class EnhancedNFLProjector:
             sos_value = self.sos_data[player_team].get('combined_sos', 0.5)
             context['sos_adjustment'] = 1.0 + (self._safe_float(sos_value) - 0.5) * 0.3
         
-        # FIXED: Better odds data parsing with debugging
-        if hasattr(self, 'odds_data') and self.odds_data is not None:
-            found_odds = False
+        # Get odds data
+        if self.odds_data:
             for odds in self.odds_data:
-                # Debug: show what we're looking at
                 home_team = odds.get('home_team', '')
                 away_team = odds.get('away_team', '')
-                market = odds.get('market', '')
-                point = odds.get('point', '')
                 
-                # Check if this is the right game
                 if (home_team == player_team and away_team == opponent_team) or \
                    (home_team == opponent_team and away_team == player_team):
                     
-                    if market == 'totals' and point:
-                        context['expected_total'] = self._safe_float(point, 45.0)
-                        found_odds = True
-                    elif market == 'spreads' and point:
-                        # Determine spread direction based on which team is which
-                        if home_team == player_team:
-                            context['spread'] = -self._safe_float(point, 0.0)  # Home team favored
-                        else:
-                            context['spread'] = self._safe_float(point, 0.0)   # Away team underdog
-                        found_odds = True
+                    if odds.get('market') == 'totals' and odds.get('point'):
+                        context['expected_total'] = self._safe_float(odds['point'], 45.0)
+                    elif odds.get('market') == 'spreads' and odds.get('point'):
+                        spread = self._safe_float(odds['point'], 0.0)
+                        context['spread'] = -spread if home_team == player_team else spread
         
         return context
     
     def estimate_vegas_line(self, projection, position, stat_type):
-        """Estimate what the Vegas line might have been based on projection"""
+        """Estimate Vegas line based on projection"""
         safe_projection = self._safe_float(projection, 0.0)
         
         if position == 'RB':
@@ -322,12 +193,6 @@ class EnhancedNFLProjector:
             elif stat_type == 'rushing_tds':
                 estimated_line = round(safe_projection * 2) / 2
                 return max(0.5, min(2.5, estimated_line))
-            elif stat_type == 'receiving_yards':
-                estimated_line = round(safe_projection / 5) * 5
-                return max(15, min(80, estimated_line))
-            elif stat_type == 'receptions':
-                estimated_line = round(safe_projection * 2) / 2
-                return max(2.5, min(8.5, estimated_line))
         
         elif position == 'QB':
             if stat_type == 'passing_yards':
@@ -339,26 +204,25 @@ class EnhancedNFLProjector:
             elif stat_type == 'rushing_yards':
                 estimated_line = round(safe_projection)
                 return max(10, min(60, estimated_line))
-            elif stat_type == 'interceptions':
-                estimated_line = round(safe_projection * 2) / 2
-                return max(0.5, min(2.5, estimated_line))
         
         return round(safe_projection)
     
     def project_rushing_stats(self, player_name, opponent_team, games_played=9):
-        """Enhanced rushing projections for RBs and rushing QBs"""
+        """Project rushing stats for RBs and QBs"""
         if self.rb_data is None or self.qb_data is None:
             raise ValueError("Player data not loaded properly")
         
+        # Check RB data first
         rb_row = self.rb_data[self.rb_data['PlayerName'] == player_name]
         if not rb_row.empty:
             return self._project_rb_rushing(rb_row.iloc[0], opponent_team, games_played)
         
+        # Check QB data for rushing QBs
         qb_row = self.qb_data[self.qb_data['PlayerName'] == player_name]
         if not qb_row.empty:
             return self._project_qb_rushing(qb_row.iloc[0], opponent_team, games_played)
         
-        raise ValueError(f"Player '{player_name}' not found in RB or QB data")
+        raise ValueError(f"Player '{player_name}' not found")
     
     def _project_rb_rushing(self, rb_stats, opponent_team, games_played):
         """Project rushing stats for running backs"""
@@ -366,30 +230,30 @@ class EnhancedNFLProjector:
         
         defense_stats = self._get_defense_stats(opponent_team)
         if not defense_stats:
-            raise ValueError(f"Defense stats for '{opponent_team}' not found")
+            # If no defense stats, use defaults
+            defense_stats = {
+                'RUSHING YARDS PER GAME ALLOWED': 100,
+                'RUSHING TD PER GAME ALLOWED': 1.0,
+                'RUSHING ATTEMPTS ALLOWED': 25
+            }
         
         game_context = self.get_game_context(player_team, opponent_team)
         
         projections = {}
         
-        rb_rush_yds_pg = self._safe_float(rb_stats['RushingYDS']) / games_played
+        # Rushing Yards
+        rb_rush_yds_pg = self._safe_float(rb_stats['RushingYDS']) / max(1, games_played)
         def_rush_yds_allowed = self._safe_float(defense_stats.get('RUSHING YARDS PER GAME ALLOWED', 100))
         
         game_script = 1.15 if game_context['spread'] > 3 else 0.85 if game_context['spread'] < -3 else 1.0
         
-        ml_prediction = self.get_ml_prediction(rb_stats['PlayerName'], opponent_team, 'RB', 'rushing_yards')
+        projections['RushingYards'] = (
+            (rb_rush_yds_pg + def_rush_yds_allowed) / 2 * 
+            game_script * game_context['sos_adjustment']
+        )
         
-        if ml_prediction is not None:
-            projections['RushingYards'] = ml_prediction
-            projections['UsedML'] = True
-        else:
-            projections['RushingYards'] = (
-                (rb_rush_yds_pg + def_rush_yds_allowed) / 2 * 
-                game_script * game_context['sos_adjustment']
-            )
-            projections['UsedML'] = False
-        
-        rb_rush_td_pg = self._safe_float(rb_stats['RushingTD']) / games_played
+        # Rushing TDs
+        rb_rush_td_pg = self._safe_float(rb_stats['RushingTD']) / max(1, games_played)
         def_rush_td_allowed = self._safe_float(defense_stats.get('RUSHING TD PER GAME ALLOWED', 1.0))
         
         projections['RushingTDs'] = (
@@ -397,16 +261,12 @@ class EnhancedNFLProjector:
             (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
         )
         
-        rb_carries_pg = self._safe_float(rb_stats['TouchCarries']) / games_played
+        # Carries
+        rb_carries_pg = self._safe_float(rb_stats.get('TouchCarries', rb_stats.get('RushingATT', 0))) / max(1, games_played)
         def_rush_attempts_allowed = self._safe_float(defense_stats.get('RUSHING ATTEMPTS ALLOWED', 25))
         
         projections['Carries'] = (
             (rb_carries_pg + def_rush_attempts_allowed * 0.3) / 1.3 * game_script
-        )
-        
-        projections['FantasyPoints'] = (
-            projections['RushingYards'] * 0.1 +
-            projections['RushingTDs'] * 6
         )
         
         return projections, rb_stats, defense_stats, game_context, 'RB'
@@ -417,38 +277,30 @@ class EnhancedNFLProjector:
         
         defense_stats = self._get_defense_stats(opponent_team)
         if not defense_stats:
-            raise ValueError(f"Defense stats for '{opponent_team}' not found")
+            defense_stats = {
+                'RUSHING YARDS PER GAME ALLOWED': 100,
+                'RUSHING TD PER GAME ALLOWED': 1.0
+            }
         
         game_context = self.get_game_context(player_team, opponent_team)
         
         projections = {}
         
-        qb_rush_yds_pg = self._safe_float(qb_stats['RushingYDS']) / games_played
+        # Rushing Yards
+        qb_rush_yds_pg = self._safe_float(qb_stats['RushingYDS']) / max(1, games_played)
+        projections['RushingYards'] = qb_rush_yds_pg * game_context['sos_adjustment']
         
-        ml_prediction = self.get_ml_prediction(qb_stats['PlayerName'], opponent_team, 'QB', 'rushing_yards')
-        
-        if ml_prediction is not None:
-            projections['RushingYards'] = ml_prediction
-            projections['UsedML'] = True
-        else:
-            projections['RushingYards'] = qb_rush_yds_pg * game_context['sos_adjustment']
-            projections['UsedML'] = False
-        
-        qb_rush_td_pg = self._safe_float(qb_stats['RushingTD']) / games_played
-        
+        # Rushing TDs
+        qb_rush_td_pg = self._safe_float(qb_stats['RushingTD']) / max(1, games_played)
         projections['RushingTDs'] = qb_rush_td_pg * (game_context['expected_total'] / 45.0)
         
+        # Carries (estimate)
         projections['Carries'] = projections['RushingYards'] / 4.5
-        
-        projections['FantasyPoints'] = (
-            projections['RushingYards'] * 0.1 +
-            projections['RushingTDs'] * 6
-        )
         
         return projections, qb_stats, defense_stats, game_context, 'QB'
     
     def project_passing_stats(self, qb_name, opponent_team, games_played=9):
-        """Enhanced QB passing projections"""
+        """Project passing stats for QBs"""
         if self.qb_data is None:
             raise ValueError("QB data not loaded properly")
             
@@ -461,36 +313,28 @@ class EnhancedNFLProjector:
         
         defense_stats = self._get_defense_stats(opponent_team)
         if not defense_stats:
-            raise ValueError(f"Defense stats for '{opponent_team}' not found")
+            defense_stats = {
+                'PASSING YARDS ALLOWED': 230,
+                'PASSING TD ALLOWED': 1.5,
+                'PASSING ATTEMPTS ALLOWED': 35,
+                'PASSING COMPLETIONS ALLOWED': 23
+            }
         
         game_context = self.get_game_context(player_team, opponent_team)
         
         projections = {}
         
-        qb_pass_yds_pg = self._safe_float(qb_stats['PassingYDS']) / games_played
+        # Passing Yards
+        qb_pass_yds_pg = self._safe_float(qb_stats['PassingYDS']) / max(1, games_played)
         def_pass_yds_allowed = self._safe_float(defense_stats.get('PASSING YARDS ALLOWED', 230))
         
-        ml_prediction = self.get_ml_prediction(qb_name, opponent_team, 'QB', 'passing_yards')
+        projections['PassingYards'] = (
+            (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
+            (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
+        )
         
-        if ml_prediction is not None:
-            # FIXED: Use more reasonable ML prediction or fallback
-            if ml_prediction > 400:  # If prediction is unrealistic
-                projections['PassingYards'] = (
-                    (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
-                    (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
-                )
-                projections['UsedML'] = False
-            else:
-                projections['PassingYards'] = ml_prediction
-                projections['UsedML'] = True
-        else:
-            projections['PassingYards'] = (
-                (qb_pass_yds_pg + def_pass_yds_allowed) / 2 *
-                (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
-            )
-            projections['UsedML'] = False
-        
-        qb_pass_td_pg = self._safe_float(qb_stats['PassingTD']) / games_played
+        # Passing TDs
+        qb_pass_td_pg = self._safe_float(qb_stats['PassingTD']) / max(1, games_played)
         def_pass_td_allowed = self._safe_float(defense_stats.get('PASSING TD ALLOWED', 1.5))
         
         projections['PassingTDs'] = (
@@ -498,12 +342,11 @@ class EnhancedNFLProjector:
             (game_context['expected_total'] / 45.0) * game_context['sos_adjustment']
         )
         
-        qb_int_pg = self._safe_float(qb_stats['PassingInt']) / games_played
+        # Interceptions
+        qb_int_pg = self._safe_float(qb_stats['PassingInt']) / max(1, games_played)
+        projections['Interceptions'] = qb_int_pg * game_context['sos_adjustment']
         
-        projections['Interceptions'] = (
-            (qb_int_pg + self._safe_float(defense_stats.get('INTERCEPTIONS', 1.0))) / 2
-        )
-        
+        # Pass Attempts & Completions
         def_attempts_allowed = self._safe_float(defense_stats.get('PASSING ATTEMPTS ALLOWED', 35))
         def_completions_allowed = self._safe_float(defense_stats.get('PASSING COMPLETIONS ALLOWED', 23))
         
@@ -511,142 +354,126 @@ class EnhancedNFLProjector:
         defense_completion_pct = def_completions_allowed / def_attempts_allowed if def_attempts_allowed > 0 else 0.65
         projections['Completions'] = projections['PassAttempts'] * defense_completion_pct
         
-        projections['FantasyPoints'] = (
-            projections['PassingYards'] * 0.04 +
-            projections['PassingTDs'] * 4 -
-            projections['Interceptions'] * 2
-        )
-        
         return projections, qb_stats, defense_stats, game_context
     
-    def get_available_rushers(self):
-        """Get all players with rushing stats in alphabetical order"""
-        if self.rb_data is None or self.qb_data is None:
-            return []
-        rushers = self.rb_data['PlayerName'].tolist() + self.qb_data['PlayerName'].tolist()
-        return sorted(list(set(rushers)))
-    
-    def get_available_passers(self):
-        """Get all quarterbacks in alphabetical order"""
-        if self.qb_data is None:
-            return []
-        return sorted(self.qb_data['PlayerName'].tolist())
-    
-    def get_available_teams(self):
-        """Get available teams from defense data in alphabetical order"""
-        teams = set()
-        if self.defense_data:
-            for team in self.defense_data:
-                if 'Team' in team:
-                    teams.add(team['Team'])
-        return sorted(list(teams))
-    
     def get_players_playing_this_week(self):
-        """Get all players who are playing this week based on schedule"""
+        """Get all players who are playing this week"""
         playing_players = {
             'rushers': [],
             'passers': []
         }
         
         if not self.schedule_data:
-            st.warning("No schedule data available")
-            return playing_players
-        
-        # Extract all teams playing this week
-        playing_teams = set()
-        for game in self.schedule_data:
-            if 'home_team' in game and 'away_team' in game:
-                playing_teams.add(game['home_team'])
-                playing_teams.add(game['away_team'])
-        
-        # Get matchups for each team
-        team_matchups = {}
-        for game in self.schedule_data:
-            if 'home_team' in game and 'away_team' in game:
-                team_matchups[game['home_team']] = game['away_team']
-                team_matchups[game['away_team']] = game['home_team']
-        
-        # Find rushers playing this week
-        if self.rb_data is not None:
-            for _, player in self.rb_data.iterrows():
-                if player['Team'] in playing_teams:
+            st.warning("⚠️ No schedule data available - using all players")
+            # Fallback: return all players if no schedule
+            if self.rb_data is not None:
+                for _, player in self.rb_data.iterrows():
                     playing_players['rushers'].append({
                         'name': player['PlayerName'],
                         'team': player['Team'],
-                        'opponent': team_matchups.get(player['Team'], 'Unknown'),
+                        'opponent': 'TBD',  # Unknown opponent
                         'position': 'RB'
                     })
-        
-        # Find QBs playing this week (both for passing and rushing)
-        if self.qb_data is not None:
-            for _, player in self.qb_data.iterrows():
-                if player['Team'] in playing_teams:
+            
+            if self.qb_data is not None:
+                for _, player in self.qb_data.iterrows():
                     playing_players['passers'].append({
                         'name': player['PlayerName'],
                         'team': player['Team'],
-                        'opponent': team_matchups.get(player['Team'], 'Unknown'),
+                        'opponent': 'TBD',
                         'position': 'QB'
                     })
-                    # Also add QBs to rushers list for rushing projections
                     playing_players['rushers'].append({
                         'name': player['PlayerName'],
                         'team': player['Team'],
-                        'opponent': team_matchups.get(player['Team'], 'Unknown'),
+                        'opponent': 'TBD',
+                        'position': 'QB'
+                    })
+            
+            return playing_players
+        
+        # Extract teams playing this week
+        playing_teams = set()
+        team_matchups = {}
+        
+        for game in self.schedule_data:
+            # Handle different schedule formats
+            if isinstance(game, dict):
+                home_team = game.get('home_team', game.get('home', ''))
+                away_team = game.get('away_team', game.get('away', ''))
+                
+                if home_team and away_team:
+                    playing_teams.add(home_team)
+                    playing_teams.add(away_team)
+                    team_matchups[home_team] = away_team
+                    team_matchups[away_team] = home_team
+        
+        # Find players on playing teams
+        if self.rb_data is not None:
+            for _, player in self.rb_data.iterrows():
+                team = player['Team']
+                if team in playing_teams:
+                    playing_players['rushers'].append({
+                        'name': player['PlayerName'],
+                        'team': team,
+                        'opponent': team_matchups.get(team, 'Unknown'),
+                        'position': 'RB'
+                    })
+        
+        if self.qb_data is not None:
+            for _, player in self.qb_data.iterrows():
+                team = player['Team']
+                if team in playing_teams:
+                    playing_players['passers'].append({
+                        'name': player['PlayerName'],
+                        'team': team,
+                        'opponent': team_matchups.get(team, 'Unknown'),
+                        'position': 'QB'
+                    })
+                    # Add QBs to rushers for rushing projections
+                    playing_players['rushers'].append({
+                        'name': player['PlayerName'],
+                        'team': team,
+                        'opponent': team_matchups.get(team, 'Unknown'),
                         'position': 'QB'
                     })
         
         return playing_players
     
     def calculate_bet_grade(self, projection, vegas_line, stat_type):
-        """Calculate a bet grade from 0-100 based on projection vs vegas line"""
+        """Calculate bet grade from 0-100"""
         difference = abs(projection - vegas_line)
         
-        # Different thresholds for different stat types
         if stat_type in ['rushing_yards', 'passing_yards']:
-            if difference >= 20:
-                return 95
-            elif difference >= 15:
-                return 90
-            elif difference >= 10:
-                return 85
-            elif difference >= 7:
-                return 80
-            elif difference >= 5:
-                return 75
-            elif difference >= 3:
-                return 70
-            else:
-                return 65
+            if difference >= 20: return 95
+            elif difference >= 15: return 90
+            elif difference >= 10: return 85
+            elif difference >= 7: return 80
+            elif difference >= 5: return 75
+            elif difference >= 3: return 70
+            else: return 65
         elif stat_type in ['rushing_tds', 'passing_tds']:
-            if difference >= 0.8:
-                return 95
-            elif difference >= 0.6:
-                return 90
-            elif difference >= 0.4:
-                return 85
-            elif difference >= 0.3:
-                return 80
-            elif difference >= 0.2:
-                return 75
-            elif difference >= 0.1:
-                return 70
-            else:
-                return 65
+            if difference >= 0.8: return 95
+            elif difference >= 0.6: return 90
+            elif difference >= 0.4: return 85
+            elif difference >= 0.3: return 80
+            elif difference >= 0.2: return 75
+            elif difference >= 0.1: return 70
+            else: return 65
         else:
-            # Default grading
-            if difference >= 3:
-                return 90
-            elif difference >= 2:
-                return 80
-            elif difference >= 1:
-                return 70
-            else:
-                return 60
+            return 70
     
     def generate_all_projections(self, games_played=9):
         """Generate projections for all players playing this week"""
         playing_players = self.get_players_playing_this_week()
         all_projections = []
+        
+        st.info(f"🔄 Generating projections for {len(playing_players['rushers'])} players...")
+        
+        # Progress tracking
+        progress_bar = st.progress(0)
+        total_players = len(playing_players['rushers']) + len(playing_players['passers'])
+        processed = 0
         
         # Generate rushing projections
         for player_info in playing_players['rushers']:
@@ -666,32 +493,36 @@ class EnhancedNFLProjector:
                 # Use the higher grade
                 bet_grade = max(rush_yds_grade, rush_tds_grade)
                 
-                # Determine if over or under
-                if projections['RushingYards'] > vegas_rush_yds or projections['RushingTDs'] > vegas_rush_tds:
-                    bet_direction = "↑"  # Over
-                    primary_line = f"{vegas_rush_yds} Rush Yds" if rush_yds_grade >= rush_tds_grade else f"{vegas_rush_tds} Rush TDs"
+                # Determine bet direction and primary line
+                if projections['RushingYards'] > vegas_rush_yds:
+                    bet_direction = "↑"
+                    primary_line = f"{vegas_rush_yds} Rush Yds"
+                    proj_diff = projections['RushingYards'] - vegas_rush_yds
                 else:
-                    bet_direction = "↓"  # Under
-                    primary_line = f"{vegas_rush_yds} Rush Yds" if rush_yds_grade >= rush_tds_grade else f"{vegas_rush_tds} Rush TDs"
+                    bet_direction = "↓"
+                    primary_line = f"{vegas_rush_yds} Rush Yds"
+                    proj_diff = vegas_rush_yds - projections['RushingYards']
                 
                 all_projections.append({
                     'Player': player_info['name'],
                     'Team': player_info['team'],
                     'Opponent': player_info['opponent'],
                     'Position': position,
-                    'BetGrade': bet_grade,
+                    'BetGrade': int(bet_grade),
                     'BetDirection': bet_direction,
                     'PrimaryLine': primary_line,
+                    'ProjectionDifferential': f"+{proj_diff:.1f}",
+                    'Game': f"{player_info['team']} vs {player_info['opponent']}",
                     'RushingYards': projections['RushingYards'],
-                    'RushingTDs': projections['RushingTDs'],
-                    'VegasRushYds': vegas_rush_yds,
-                    'VegasRushTDs': vegas_rush_tds,
-                    'ProjectionDifferential': round(abs(projections['RushingYards'] - vegas_rush_yds), 1),
-                    'Game': f"{player_info['team']} vs {player_info['opponent']}"
+                    'VegasLine': vegas_rush_yds
                 })
                 
             except Exception as e:
+                st.warning(f"Could not generate projection for {player_info['name']}: {str(e)}")
                 continue
+            
+            processed += 1
+            progress_bar.progress(processed / total_players)
         
         # Generate passing projections for QBs
         for player_info in playing_players['passers']:
@@ -711,38 +542,44 @@ class EnhancedNFLProjector:
                 # Use the higher grade
                 bet_grade = max(pass_yds_grade, pass_tds_grade)
                 
-                # Determine if over or under
-                if projections['PassingYards'] > vegas_pass_yds or projections['PassingTDs'] > vegas_pass_tds:
-                    bet_direction = "↑"  # Over
-                    primary_line = f"{vegas_pass_yds} Pass Yds" if pass_yds_grade >= pass_tds_grade else f"{vegas_pass_tds} Pass TDs"
+                # Determine bet direction and primary line
+                if projections['PassingYards'] > vegas_pass_yds:
+                    bet_direction = "↑"
+                    primary_line = f"{vegas_pass_yds} Pass Yds"
+                    proj_diff = projections['PassingYards'] - vegas_pass_yds
                 else:
-                    bet_direction = "↓"  # Under
-                    primary_line = f"{vegas_pass_yds} Pass Yds" if pass_yds_grade >= pass_tds_grade else f"{vegas_pass_tds} Pass TDs"
+                    bet_direction = "↓"
+                    primary_line = f"{vegas_pass_yds} Pass Yds"
+                    proj_diff = vegas_pass_yds - projections['PassingYards']
                 
                 all_projections.append({
                     'Player': player_info['name'],
                     'Team': player_info['team'],
                     'Opponent': player_info['opponent'],
                     'Position': 'QB',
-                    'BetGrade': bet_grade,
+                    'BetGrade': int(bet_grade),
                     'BetDirection': bet_direction,
                     'PrimaryLine': primary_line,
+                    'ProjectionDifferential': f"+{proj_diff:.1f}",
+                    'Game': f"{player_info['team']} vs {player_info['opponent']}",
                     'PassingYards': projections['PassingYards'],
-                    'PassingTDs': projections['PassingTDs'],
-                    'VegasPassYds': vegas_pass_yds,
-                    'VegasPassTDs': vegas_pass_tds,
-                    'ProjectionDifferential': round(abs(projections['PassingYards'] - vegas_pass_yds), 1),
-                    'Game': f"{player_info['team']} vs {player_info['opponent']}"
+                    'VegasLine': vegas_pass_yds
                 })
                 
             except Exception as e:
+                st.warning(f"Could not generate projection for {player_info['name']}: {str(e)}")
                 continue
+            
+            processed += 1
+            progress_bar.progress(processed / total_players)
+        
+        progress_bar.empty()
         
         # Sort by bet grade (highest first)
         return sorted(all_projections, key=lambda x: x['BetGrade'], reverse=True)
 
 def create_player_card(player_data):
-    """Create a card for a player similar to the reference image"""
+    """Create a card for a player"""
     grade_color = "#00ff00" if player_data['BetGrade'] >= 85 else "#ffff00" if player_data['BetGrade'] >= 75 else "#ff4444"
     
     card_html = f"""
@@ -795,13 +632,13 @@ def create_player_card(player_data):
                 Market Line
             </div>
             <div style="font-weight: bold; font-size: 14px;">
-                {player_data['PrimaryLine'].split(' ')[-2]} {player_data['PrimaryLine'].split(' ')[-1]}
+                {player_data['PrimaryLine']}
             </div>
             <div style="font-size: 12px; color: #666; margin-top: 8px;">
                 Proj Differential
             </div>
             <div style="font-weight: bold; font-size: 14px; color: {'#00aa00' if player_data['BetDirection'] == '↑' else '#aa0000'}">
-                +{player_data['ProjectionDifferential']}
+                {player_data['ProjectionDifferential']}
             </div>
         </div>
     </div>
@@ -824,10 +661,17 @@ def main():
     
     projector = st.session_state.projector
     
+    # Debug information
+    with st.expander("🔧 Debug Info"):
+        st.write(f"RB Data: {len(projector.rb_data) if projector.rb_data is not None else 'None'}")
+        st.write(f"QB Data: {len(projector.qb_data) if projector.qb_data is not None else 'None'}")
+        st.write(f"Schedule Data: {len(projector.schedule_data) if projector.schedule_data else 'None'}")
+        st.write(f"Defense Data: {len(projector.defense_data) if projector.defense_data else 'None'}")
+    
     # Create the card-based interface
     st.markdown("### Player Projections for This Week")
     
-    # Filters at the top (similar to the reference image)
+    # Filters
     col1, col2, col3, col4 = st.columns([2, 2, 3, 2])
     
     with col1:
@@ -837,19 +681,24 @@ def main():
         position_filter = st.selectbox("POSITION", ["ALL ✓", "QB", "RB"], key="position_filter")
     
     with col3:
-        team_filter = st.selectbox("TEAM MARKET", ["ALL ✓"] + projector.get_available_teams(), key="team_filter")
+        available_teams = ["ALL ✓"] + (projector.get_available_teams() if hasattr(projector, 'get_available_teams') else [])
+        team_filter = st.selectbox("TEAM MARKET", available_teams, key="team_filter")
     
     with col4:
-        show_count = st.selectbox("SHOW", ["50", "100", "ALL"], key="show_count")
+        show_count = st.selectbox("SHOW", ["25", "50", "100", "ALL"], key="show_count")
     
     # Search bar
     search_query = st.text_input("🔍 Search players...", placeholder="Type to search players or teams")
     
+    # Games played input
+    games_played = st.number_input("Games Played This Season", min_value=1, max_value=17, value=9, key="games_played")
+    
     # Generate all projections button
-    if st.button("🔄 Generate All Projections", type="primary"):
+    if st.button("🔄 Generate All Projections", type="primary", use_container_width=True):
         with st.spinner("Generating projections for all players..."):
-            all_projections = projector.generate_all_projections()
+            all_projections = projector.generate_all_projections(games_played)
             st.session_state.all_projections = all_projections
+            st.success(f"✅ Generated {len(all_projections)} projections!")
     
     # Display projections in card format
     if 'all_projections' in st.session_state and st.session_state.all_projections:
@@ -882,7 +731,18 @@ def main():
             st.markdown(card_html, unsafe_allow_html=True)
     
     else:
-        st.info("Click 'Generate All Projections' to see player projections for this week")
+        st.info("👆 Click 'Generate All Projections' to see player projections for this week")
+        
+        # Show sample data if available
+        if hasattr(projector, 'rb_data') and projector.rb_data is not None:
+            st.subheader("Available Players (Sample)")
+            st.write(f"RBs: {len(projector.rb_data)} players")
+            st.write(f"QBs: {len(projector.qb_data)} players")
+            
+            if len(projector.rb_data) > 0:
+                st.write("Sample RBs:", projector.rb_data['PlayerName'].head(10).tolist())
+            if len(projector.qb_data) > 0:
+                st.write("Sample QBs:", projector.qb_data['PlayerName'].head(5).tolist())
 
 if __name__ == "__main__":
     main()
