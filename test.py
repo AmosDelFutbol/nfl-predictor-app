@@ -18,6 +18,74 @@ class EnhancedNFLProjector:
         self.nfl_model = None
         self.model_type = None
         
+        # Team name mapping - maps various formats to standard format
+        self.team_mapping = {
+            # Arizona Cardinals
+            'Arizona Cardinals': 'ARI', 'Arizona': 'ARI', 'Cardinals': 'ARI', 'ARI Cardinals': 'ARI',
+            # Atlanta Falcons
+            'Atlanta Falcons': 'ATL', 'Atlanta': 'ATL', 'Falcons': 'ATL', 'ATL Falcons': 'ATL',
+            # Baltimore Ravens
+            'Baltimore Ravens': 'BAL', 'Baltimore': 'BAL', 'Ravens': 'BAL', 'BAL Ravens': 'BAL',
+            # Buffalo Bills
+            'Buffalo Bills': 'BUF', 'Buffalo': 'BUF', 'Bills': 'BUF', 'BUF Bills': 'BUF',
+            # Carolina Panthers
+            'Carolina Panthers': 'CAR', 'Carolina': 'CAR', 'Panthers': 'CAR', 'CAR Panthers': 'CAR',
+            # Chicago Bears
+            'Chicago Bears': 'CHI', 'Chicago': 'CHI', 'Bears': 'CHI', 'CHI Bears': 'CHI',
+            # Cincinnati Bengals
+            'Cincinnati Bengals': 'CIN', 'Cincinnati': 'CIN', 'Bengals': 'CIN', 'CIN Bengals': 'CIN',
+            # Cleveland Browns
+            'Cleveland Browns': 'CLE', 'Cleveland': 'CLE', 'Browns': 'CLE', 'CLE Browns': 'CLE',
+            # Dallas Cowboys
+            'Dallas Cowboys': 'DAL', 'Dallas': 'DAL', 'Cowboys': 'DAL', 'DAL Cowboys': 'DAL',
+            # Denver Broncos
+            'Denver Broncos': 'DEN', 'Denver': 'DEN', 'Broncos': 'DEN', 'DEN Broncos': 'DEN',
+            # Detroit Lions
+            'Detroit Lions': 'DET', 'Detroit': 'DET', 'Lions': 'DET', 'DET Lions': 'DET',
+            # Green Bay Packers
+            'Green Bay Packers': 'GB', 'Green Bay': 'GB', 'Packers': 'GB', 'GB Packers': 'GB',
+            # Houston Texans
+            'Houston Texans': 'HOU', 'Houston': 'HOU', 'Texans': 'HOU', 'HOU Texans': 'HOU',
+            # Indianapolis Colts
+            'Indianapolis Colts': 'IND', 'Indianapolis': 'IND', 'Colts': 'IND', 'IND Colts': 'IND',
+            # Jacksonville Jaguars
+            'Jacksonville Jaguars': 'JAX', 'Jacksonville': 'JAX', 'Jaguars': 'JAX', 'JAX Jaguars': 'JAX',
+            # Kansas City Chiefs
+            'Kansas City Chiefs': 'KC', 'Kansas City': 'KC', 'Chiefs': 'KC', 'KC Chiefs': 'KC',
+            # Las Vegas Raiders
+            'Las Vegas Raiders': 'LV', 'Las Vegas': 'LV', 'Raiders': 'LV', 'LV Raiders': 'LV',
+            # Los Angeles Chargers
+            'Los Angeles Chargers': 'LAC', 'LA Chargers': 'LAC', 'Chargers': 'LAC', 'LAC Chargers': 'LAC',
+            # Los Angeles Rams
+            'Los Angeles Rams': 'LAR', 'LA Rams': 'LAR', 'Rams': 'LAR', 'LAR Rams': 'LAR',
+            # Miami Dolphins
+            'Miami Dolphins': 'MIA', 'Miami': 'MIA', 'Dolphins': 'MIA', 'MIA Dolphins': 'MIA',
+            # Minnesota Vikings
+            'Minnesota Vikings': 'MIN', 'Minnesota': 'MIN', 'Vikings': 'MIN', 'MIN Vikings': 'MIN',
+            # New England Patriots
+            'New England Patriots': 'NE', 'New England': 'NE', 'Patriots': 'NE', 'NE Patriots': 'NE',
+            # New Orleans Saints
+            'New Orleans Saints': 'NO', 'New Orleans': 'NO', 'Saints': 'NO', 'NO Saints': 'NO',
+            # New York Giants
+            'New York Giants': 'NYG', 'NY Giants': 'NYG', 'Giants': 'NYG', 'NYG Giants': 'NYG',
+            # New York Jets
+            'New York Jets': 'NYJ', 'NY Jets': 'NYJ', 'Jets': 'NYJ', 'NYJ Jets': 'NYJ',
+            # Philadelphia Eagles
+            'Philadelphia Eagles': 'PHI', 'Philadelphia': 'PHI', 'Eagles': 'PHI', 'PHI Eagles': 'PHI',
+            # Pittsburgh Steelers
+            'Pittsburgh Steelers': 'PIT', 'Pittsburgh': 'PIT', 'Steelers': 'PIT', 'PIT Steelers': 'PIT',
+            # San Francisco 49ers
+            'San Francisco 49ers': 'SF', 'San Francisco': 'SF', '49ers': 'SF', 'SF 49ers': 'SF',
+            # Seattle Seahawks
+            'Seattle Seahawks': 'SEA', 'Seattle': 'SEA', 'Seahawks': 'SEA', 'SEA Seahawks': 'SEA',
+            # Tampa Bay Buccaneers
+            'Tampa Bay Buccaneers': 'TB', 'Tampa Bay': 'TB', 'Buccaneers': 'TB', 'TB Buccaneers': 'TB',
+            # Tennessee Titans
+            'Tennessee Titans': 'TEN', 'Tennessee': 'TEN', 'Titans': 'TEN', 'TEN Titans': 'TEN',
+            # Washington Commanders
+            'Washington Commanders': 'WSH', 'Washington': 'WSH', 'Commanders': 'WSH', 'WSH Commanders': 'WSH'
+        }
+        
         try:
             # Load player data
             self.rb_data = pd.read_csv('RB_season.csv')
@@ -35,6 +103,29 @@ class EnhancedNFLProjector:
         
         # Clean the data - fill NaN values
         self._clean_data()
+    
+    def _normalize_team_name(self, team_name):
+        """Normalize team name to standard format"""
+        if not team_name or pd.isna(team_name):
+            return None
+        
+        team_name = str(team_name).strip()
+        
+        # Check exact match first
+        if team_name in self.team_mapping:
+            return self.team_mapping[team_name]
+        
+        # Check partial matches
+        for key, value in self.team_mapping.items():
+            if team_name.lower() in key.lower() or key.lower() in team_name.lower():
+                return value
+        
+        # If no match found, try to extract from the string
+        for key in self.team_mapping.keys():
+            if any(word in team_name.lower() for word in key.lower().split()):
+                return self.team_mapping[key]
+        
+        return team_name  # Return original if no mapping found
     
     def _load_json_data(self):
         """Load JSON data files with individual error handling"""
@@ -66,52 +157,36 @@ class EnhancedNFLProjector:
             st.warning(f"⚠️ Could not load strength of schedule data: {e}")
             self.sos_data = {}
         
-        # Load schedule data - IMPROVED PARSING
+        # Load schedule data
         try:
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
                 
-            # Debug: Show what the schedule data looks like
-            st.info(f"📅 Raw schedule data type: {type(schedule_data)}")
-            
             # Handle different schedule formats
             if isinstance(schedule_data, dict):
-                st.info("📅 Schedule is a dictionary")
                 # Try common keys
                 if 'Week 10' in schedule_data:
                     self.schedule_data = schedule_data['Week 10']
-                    st.success("✅ Found 'Week 10' in schedule data")
                 elif 'week_10' in schedule_data:
                     self.schedule_data = schedule_data['week_10']
-                    st.success("✅ Found 'week_10' in schedule data")
                 elif 'games' in schedule_data:
                     self.schedule_data = schedule_data['games']
-                    st.success("✅ Found 'games' in schedule data")
                 else:
-                    # Show available keys for debugging
-                    st.info(f"📅 Available keys in schedule: {list(schedule_data.keys())}")
                     # Try to find any list structure
                     for key, value in schedule_data.items():
                         if isinstance(value, list):
                             self.schedule_data = value
-                            st.success(f"✅ Using schedule data from key: {key}")
                             break
                     else:
                         # If no list found, use the entire dict as schedule
                         self.schedule_data = [schedule_data]
             elif isinstance(schedule_data, list):
                 self.schedule_data = schedule_data
-                st.success("✅ Schedule is a list")
             else:
                 self.schedule_data = []
-                st.warning("❓ Unknown schedule format")
             
             st.success(f"✅ Schedule data loaded! Found {len(self.schedule_data)} games")
             
-            # Show first game for debugging
-            if self.schedule_data and len(self.schedule_data) > 0:
-                st.info(f"📅 First game sample: {self.schedule_data[0]}")
-                
         except Exception as e:
             st.error(f"❌ Could not load schedule data: {e}")
             self.schedule_data = []
@@ -138,12 +213,18 @@ class EnhancedNFLProjector:
     def _clean_data(self):
         """Clean the data by filling NaN values"""
         if self.rb_data is not None:
+            # Normalize team names in player data
+            self.rb_data['Team'] = self.rb_data['Team'].apply(self._normalize_team_name)
+            
             rb_numeric_columns = ['RushingYDS', 'RushingTD', 'TouchCarries', 'ReceivingYDS', 'ReceivingRec', 'ReceivingTD']
             for col in rb_numeric_columns:
                 if col in self.rb_data.columns:
                     self.rb_data[col] = self.rb_data[col].fillna(0)
         
         if self.qb_data is not None:
+            # Normalize team names in player data
+            self.qb_data['Team'] = self.qb_data['Team'].apply(self._normalize_team_name)
+            
             qb_numeric_columns = ['PassingYDS', 'PassingTD', 'PassingInt', 'RushingYDS', 'RushingTD']
             for col in qb_numeric_columns:
                 if col in self.qb_data.columns:
@@ -163,18 +244,11 @@ class EnhancedNFLProjector:
         if not self.defense_data:
             return None
         
-        # Try different team name formats
-        team_variations = [team_name, team_name.upper(), team_name.lower(), team_name.title()]
+        normalized_team = self._normalize_team_name(team_name)
         
         for team in self.defense_data:
-            defense_team = team.get('Team', '')
-            if defense_team in team_variations:
-                return team
-        
-        # If not found, try partial matching
-        for team in self.defense_data:
-            defense_team = team.get('Team', '')
-            if team_name in defense_team or defense_team in team_name:
+            defense_team = self._normalize_team_name(team.get('Team', ''))
+            if defense_team == normalized_team:
                 return team
         
         return None
@@ -195,17 +269,19 @@ class EnhancedNFLProjector:
         # Get odds data
         if self.odds_data:
             for odds in self.odds_data:
-                home_team = odds.get('home_team', '')
-                away_team = odds.get('away_team', '')
+                home_team = self._normalize_team_name(odds.get('home_team', ''))
+                away_team = self._normalize_team_name(odds.get('away_team', ''))
+                player_team_norm = self._normalize_team_name(player_team)
+                opponent_team_norm = self._normalize_team_name(opponent_team)
                 
-                if (home_team == player_team and away_team == opponent_team) or \
-                   (home_team == opponent_team and away_team == player_team):
+                if (home_team == player_team_norm and away_team == opponent_team_norm) or \
+                   (home_team == opponent_team_norm and away_team == player_team_norm):
                     
                     if odds.get('market') == 'totals' and odds.get('point'):
                         context['expected_total'] = self._safe_float(odds['point'], 45.0)
                     elif odds.get('market') == 'spreads' and odds.get('point'):
                         spread = self._safe_float(odds['point'], 0.0)
-                        context['spread'] = -spread if home_team == player_team else spread
+                        context['spread'] = -spread if home_team == player_team_norm else spread
         
         return context
     
@@ -398,7 +474,7 @@ class EnhancedNFLProjector:
                     playing_players['rushers'].append({
                         'name': player['PlayerName'],
                         'team': player['Team'],
-                        'opponent': 'TBD',  # Unknown opponent
+                        'opponent': 'TBD',
                         'position': 'RB'
                     })
             
@@ -436,12 +512,21 @@ class EnhancedNFLProjector:
                 away_team = game.get('away_team') or game.get('away') or game.get('AwayTeam') or game.get('Away')
             
             if home_team and away_team:
-                playing_teams.add(home_team)
-                playing_teams.add(away_team)
-                team_matchups[home_team] = away_team
-                team_matchups[away_team] = home_team
+                # Normalize team names
+                home_team_norm = self._normalize_team_name(home_team)
+                away_team_norm = self._normalize_team_name(away_team)
+                
+                playing_teams.add(home_team_norm)
+                playing_teams.add(away_team_norm)
+                team_matchups[home_team_norm] = away_team_norm
+                team_matchups[away_team_norm] = home_team_norm
         
         st.info(f"🏈 Found {len(playing_teams)} teams playing this week: {list(playing_teams)[:5]}...")
+        
+        # Debug: Show what teams are in player data
+        if self.rb_data is not None:
+            rb_teams = set(self.rb_data['Team'].dropna().unique())
+            st.info(f"🔍 RB teams in data: {list(rb_teams)[:10]}...")
         
         # Find players on playing teams
         rb_count = 0
