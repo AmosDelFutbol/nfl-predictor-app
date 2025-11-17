@@ -66,34 +66,54 @@ class EnhancedNFLProjector:
             st.warning(f"⚠️ Could not load strength of schedule data: {e}")
             self.sos_data = {}
         
-        # Load schedule data
+        # Load schedule data - IMPROVED PARSING
         try:
             with open('schedule.json', 'r') as f:
                 schedule_data = json.load(f)
-                # Try different possible structures
-                if isinstance(schedule_data, dict):
-                    if 'Week 10' in schedule_data:
-                        self.schedule_data = schedule_data['Week 10']
-                    elif 'week_10' in schedule_data:
-                        self.schedule_data = schedule_data['week_10']
-                    elif 'games' in schedule_data:
-                        self.schedule_data = schedule_data['games']
-                    else:
-                        # Take the first value if it's a dict with nested structure
-                        first_key = next(iter(schedule_data.keys()))
-                        if isinstance(schedule_data[first_key], list):
-                            self.schedule_data = schedule_data[first_key]
-                        else:
-                            self.schedule_data = schedule_data
-                elif isinstance(schedule_data, list):
-                    self.schedule_data = schedule_data
+                
+            # Debug: Show what the schedule data looks like
+            st.info(f"📅 Raw schedule data type: {type(schedule_data)}")
+            
+            # Handle different schedule formats
+            if isinstance(schedule_data, dict):
+                st.info("📅 Schedule is a dictionary")
+                # Try common keys
+                if 'Week 10' in schedule_data:
+                    self.schedule_data = schedule_data['Week 10']
+                    st.success("✅ Found 'Week 10' in schedule data")
+                elif 'week_10' in schedule_data:
+                    self.schedule_data = schedule_data['week_10']
+                    st.success("✅ Found 'week_10' in schedule data")
+                elif 'games' in schedule_data:
+                    self.schedule_data = schedule_data['games']
+                    st.success("✅ Found 'games' in schedule data")
                 else:
-                    self.schedule_data = []
+                    # Show available keys for debugging
+                    st.info(f"📅 Available keys in schedule: {list(schedule_data.keys())}")
+                    # Try to find any list structure
+                    for key, value in schedule_data.items():
+                        if isinstance(value, list):
+                            self.schedule_data = value
+                            st.success(f"✅ Using schedule data from key: {key}")
+                            break
+                    else:
+                        # If no list found, use the entire dict as schedule
+                        self.schedule_data = [schedule_data]
+            elif isinstance(schedule_data, list):
+                self.schedule_data = schedule_data
+                st.success("✅ Schedule is a list")
+            else:
+                self.schedule_data = []
+                st.warning("❓ Unknown schedule format")
             
-            st.success(f"✅ Schedule data loaded successfully! Found {len(self.schedule_data)} games")
+            st.success(f"✅ Schedule data loaded! Found {len(self.schedule_data)} games")
             
+            # Show first game for debugging
+            if self.schedule_data and len(self.schedule_data) > 0:
+                st.info(f"📅 First game sample: {self.schedule_data[0]}")
+                
         except Exception as e:
-            st.warning(f"⚠️ Could not load schedule data: {e}")
+            st.error(f"❌ Could not load schedule data: {e}")
             self.schedule_data = []
         
         # Load odds data
@@ -144,10 +164,17 @@ class EnhancedNFLProjector:
             return None
         
         # Try different team name formats
-        team_variations = [team_name, team_name.upper(), team_name.lower()]
+        team_variations = [team_name, team_name.upper(), team_name.lower(), team_name.title()]
         
         for team in self.defense_data:
-            if team.get('Team') in team_variations:
+            defense_team = team.get('Team', '')
+            if defense_team in team_variations:
+                return team
+        
+        # If not found, try partial matching
+        for team in self.defense_data:
+            defense_team = team.get('Team', '')
+            if team_name in defense_team or defense_team in team_name:
                 return team
         
         return None
@@ -363,9 +390,9 @@ class EnhancedNFLProjector:
             'passers': []
         }
         
+        # If no schedule data, use ALL players
         if not self.schedule_data:
-            st.warning("⚠️ No schedule data available - using all players")
-            # Fallback: return all players if no schedule
+            st.warning("⚠️ No schedule data found - using ALL players")
             if self.rb_data is not None:
                 for _, player in self.rb_data.iterrows():
                     playing_players['rushers'].append({
@@ -396,19 +423,30 @@ class EnhancedNFLProjector:
         playing_teams = set()
         team_matchups = {}
         
+        st.info(f"🔍 Analyzing {len(self.schedule_data)} schedule entries...")
+        
         for game in self.schedule_data:
             # Handle different schedule formats
+            home_team = None
+            away_team = None
+            
             if isinstance(game, dict):
-                home_team = game.get('home_team', game.get('home', ''))
-                away_team = game.get('away_team', game.get('away', ''))
-                
-                if home_team and away_team:
-                    playing_teams.add(home_team)
-                    playing_teams.add(away_team)
-                    team_matchups[home_team] = away_team
-                    team_matchups[away_team] = home_team
+                # Try different key combinations
+                home_team = game.get('home_team') or game.get('home') or game.get('HomeTeam') or game.get('Home')
+                away_team = game.get('away_team') or game.get('away') or game.get('AwayTeam') or game.get('Away')
+            
+            if home_team and away_team:
+                playing_teams.add(home_team)
+                playing_teams.add(away_team)
+                team_matchups[home_team] = away_team
+                team_matchups[away_team] = home_team
+        
+        st.info(f"🏈 Found {len(playing_teams)} teams playing this week: {list(playing_teams)[:5]}...")
         
         # Find players on playing teams
+        rb_count = 0
+        qb_count = 0
+        
         if self.rb_data is not None:
             for _, player in self.rb_data.iterrows():
                 team = player['Team']
@@ -419,6 +457,7 @@ class EnhancedNFLProjector:
                         'opponent': team_matchups.get(team, 'Unknown'),
                         'position': 'RB'
                     })
+                    rb_count += 1
         
         if self.qb_data is not None:
             for _, player in self.qb_data.iterrows():
@@ -437,6 +476,9 @@ class EnhancedNFLProjector:
                         'opponent': team_matchups.get(team, 'Unknown'),
                         'position': 'QB'
                     })
+                    qb_count += 1
+        
+        st.success(f"✅ Found {rb_count} RBs and {qb_count} QBs playing this week")
         
         return playing_players
     
@@ -468,11 +510,15 @@ class EnhancedNFLProjector:
         playing_players = self.get_players_playing_this_week()
         all_projections = []
         
-        st.info(f"🔄 Generating projections for {len(playing_players['rushers'])} players...")
+        total_players = len(playing_players['rushers']) + len(playing_players['passers'])
+        st.info(f"🔄 Generating projections for {total_players} players...")
+        
+        if total_players == 0:
+            st.error("❌ No players found to generate projections for!")
+            return all_projections
         
         # Progress tracking
         progress_bar = st.progress(0)
-        total_players = len(playing_players['rushers']) + len(playing_players['passers'])
         processed = 0
         
         # Generate rushing projections
@@ -661,13 +707,6 @@ def main():
     
     projector = st.session_state.projector
     
-    # Debug information
-    with st.expander("🔧 Debug Info"):
-        st.write(f"RB Data: {len(projector.rb_data) if projector.rb_data is not None else 'None'}")
-        st.write(f"QB Data: {len(projector.qb_data) if projector.qb_data is not None else 'None'}")
-        st.write(f"Schedule Data: {len(projector.schedule_data) if projector.schedule_data else 'None'}")
-        st.write(f"Defense Data: {len(projector.defense_data) if projector.defense_data else 'None'}")
-    
     # Create the card-based interface
     st.markdown("### Player Projections for This Week")
     
@@ -681,7 +720,11 @@ def main():
         position_filter = st.selectbox("POSITION", ["ALL ✓", "QB", "RB"], key="position_filter")
     
     with col3:
-        available_teams = ["ALL ✓"] + (projector.get_available_teams() if hasattr(projector, 'get_available_teams') else [])
+        # Get available teams from player data
+        available_teams = ["ALL ✓"]
+        if projector.rb_data is not None:
+            team_list = list(projector.rb_data['Team'].unique()) + list(projector.qb_data['Team'].unique())
+            available_teams.extend(sorted(list(set(team_list))))
         team_filter = st.selectbox("TEAM MARKET", available_teams, key="team_filter")
     
     with col4:
@@ -698,7 +741,10 @@ def main():
         with st.spinner("Generating projections for all players..."):
             all_projections = projector.generate_all_projections(games_played)
             st.session_state.all_projections = all_projections
-            st.success(f"✅ Generated {len(all_projections)} projections!")
+            if all_projections:
+                st.success(f"✅ Generated {len(all_projections)} projections!")
+            else:
+                st.error("❌ No projections were generated. Check the debug info below.")
     
     # Display projections in card format
     if 'all_projections' in st.session_state and st.session_state.all_projections:
@@ -732,17 +778,6 @@ def main():
     
     else:
         st.info("👆 Click 'Generate All Projections' to see player projections for this week")
-        
-        # Show sample data if available
-        if hasattr(projector, 'rb_data') and projector.rb_data is not None:
-            st.subheader("Available Players (Sample)")
-            st.write(f"RBs: {len(projector.rb_data)} players")
-            st.write(f"QBs: {len(projector.qb_data)} players")
-            
-            if len(projector.rb_data) > 0:
-                st.write("Sample RBs:", projector.rb_data['PlayerName'].head(10).tolist())
-            if len(projector.qb_data) > 0:
-                st.write("Sample QBs:", projector.qb_data['PlayerName'].head(5).tolist())
 
 if __name__ == "__main__":
     main()
